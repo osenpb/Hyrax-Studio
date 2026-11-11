@@ -121,7 +121,9 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
         )}
 
         <label>
-          Escribe <strong>{request.name}</strong> para confirmar
+          <span>
+            Escribe <strong>{request.name}</strong> para confirmar
+          </span>
           <input
             autoFocus
             aria-label="Escribe el nombre para confirmar"

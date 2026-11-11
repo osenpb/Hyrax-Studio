@@ -70,7 +70,7 @@ const highlight = HighlightStyle.define([
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "var(--bg)", color: "var(--text)", fontSize: "13px" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "var(--mono)", lineHeight: "1.6" },
+  ".cm-scroller": { fontFamily: "var(--mono)", fontWeight: "var(--mono-weight)", lineHeight: "1.6" },
   ".cm-content": { caretColor: "var(--accent)", padding: "10px 0" },
   ".cm-cursor": { borderLeftColor: "var(--accent)" },
   ".cm-gutters": { backgroundColor: "var(--surface)", color: "var(--muted)", border: "none", borderRight: "1px solid var(--border)" },
