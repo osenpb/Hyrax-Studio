@@ -95,6 +95,12 @@ El plan completo está en [docs/ROADMAP.md](docs/ROADMAP.md).
 3. Marca la conexión como producción.
 4. Habilita la escritura solo cuando haga falta y revisa siempre el SQL antes de aplicar.
 
+## Datos guardados y cómo borrarlos
+
+Las conexiones se guardan en tu carpeta de datos de usuario (`%APPDATA%\dev.osen.hyrax\profiles.json`) y las contraseñas y claves SSH, en el Administrador de credenciales de Windows. **Nada de eso viaja dentro del instalador**: una instalación nueva en otro equipo o usuario arranca vacía. En un equipo donde ya usaste la app, la versión instalada lee esas mismas conexiones, y desinstalar no las borra.
+
+Para dejar la app como recién instalada: `Ctrl+Mayús+A` → «Borrar conexiones y contraseñas guardadas…» (pide escribir `BORRAR`). Quita las conexiones, sus contraseñas y claves SSH, y opcionalmente el historial de consultas. No toca ninguna base de datos.
+
 ## Ejecutar desde el código
 
 Requisitos: Rust (MSVC en Windows), Node 20+ y WebView2 (incluido en Windows 11).
