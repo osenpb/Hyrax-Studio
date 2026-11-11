@@ -2,6 +2,7 @@
 name = "hyrax"
 version = "0.1.0"
 description = "Cliente de escritorio para PostgreSQL"
+license = "MIT"
 edition = "2021"
 
 [lib]
