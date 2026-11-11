@@ -14,4 +14,4 @@ Hyrax Studio is a desktop client that stores connection settings locally and kee
 - weaknesses in the content security policy or in the permissions granted to the web view
 - TLS verification problems
 
-Known limits are documented in `docs/SEGURIDAD.md` (in Spanish).
+Known limits are documented in `docs/SECURITY-REVIEW.md`.
