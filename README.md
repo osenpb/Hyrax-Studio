@@ -6,7 +6,7 @@
 
 <p align="center">
   A lightweight desktop database client, built so you don't break production.<br />
-  PostgreSQL today; MongoDB and other NoSQL databases are planned.<br />
+  PostgreSQL today; MongoDB connections can be created and tested, and its explorer is next.<br />
   Rust + Tauri 2 on the backend, React + TypeScript on the front end.
 </p>
 
@@ -39,7 +39,8 @@ DataGrip and DBeaver do a lot, sometimes too much, and they are heavy. Hyrax Stu
 - Right-click on tables, views and databases: open, view DDL, new query, copy name and drop (requires write mode, shows the SQL and asks you to type the name).
 
 **Connect**
-- Saved connections, with pasting of `postgresql://user:password@host:5432/db?sslmode=…` strings.
+- A start screen with your saved connections (engine badge, production mark, most recently used first) and a "New connection" button per engine.
+- Saved connections, with pasting of `postgresql://user:password@host:5432/db?sslmode=…`, `mongodb://…` or `mongodb+srv://…` strings (the engine is detected from the scheme).
 - **SSH tunnel** with a private key or a password. The SSH server's host key is never accepted blindly: the first time its SHA-256 fingerprint is shown for you to confirm, it is pinned to the connection, and if it ever changes Hyrax refuses to connect.
 
 **Safety**
@@ -84,7 +85,7 @@ What you should know before trusting Hyrax:
 - ER diagrams, schema comparison, session monitor, role and privilege management.
 - Dropping schemas; "Go to object" does not list indexes, constraints or triggers as entries of their own.
 - Context-aware keyword autocomplete, a scripts panel and custom snippets.
-- Other engines: PostgreSQL only. MongoDB support is [being planned](docs/MONGODB.md).
+- **MongoDB**: you can already create, save and test connections (local, Atlas `mongodb+srv`, replica sets, TLS with a custom CA), but browsing databases and collections is not available yet; it is the next phase ([plan](docs/MONGODB.md)). A company server with a private CA needs its CA as a PEM file (MongoDB uses its own certificate roots, not the Windows store).
 
 The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -118,7 +119,7 @@ npm test                         # UI, with a mocked backend
 cd src-tauri && cargo test       # backend unit tests
 ```
 
-The backend integration tests are marked `#[ignore]` and need real servers. The read tests use `HYRAX_TEST_HOST/PORT/DB/USER/PASSWORD`. The **write** tests use `HYRAX_WRITE_TEST_*` and refuse to run unless the database is named `scratch`: use them only with a disposable Postgres, never with real data. The TLS tests also need `HYRAX_TLS_CA_PATH`.
+The backend integration tests are marked `#[ignore]` and need real servers. The read tests use `HYRAX_TEST_HOST/PORT/DB/USER/PASSWORD`. The **write** tests use `HYRAX_WRITE_TEST_*` and refuse to run unless the database is named `scratch`: use them only with a disposable Postgres, never with real data. The TLS tests also need `HYRAX_TLS_CA_PATH`. The MongoDB connection test needs a disposable `mongod` (`HYRAX_MONGO_TEST_HOST` and `HYRAX_MONGO_TEST_PORT`); it only reads the server version.
 
 ```
 cargo test -- --include-ignored
