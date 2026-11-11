@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::{ConnectionProfile, SshSettings, SslMode};
+use crate::models::{ConnectionProfile, Engine, MongoSettings, SshSettings, SslMode};
 
 fn default_read_only() -> bool {
     true
@@ -30,6 +30,10 @@ struct Stored {
     ca_cert_path: Option<String>,
     #[serde(default)]
     ssh: SshSettings,
+    #[serde(default)]
+    engine: Engine,
+    #[serde(default)]
+    mongo: MongoSettings,
 }
 
 impl From<&ConnectionProfile> for Stored {
@@ -47,6 +51,8 @@ impl From<&ConnectionProfile> for Stored {
             production: p.production,
             ca_cert_path: p.ca_cert_path.clone(),
             ssh: SshSettings { secret: String::new(), has_secret: false, clear_secret: false, ..p.ssh.clone() },
+            engine: p.engine,
+            mongo: p.mongo.clone(),
         }
     }
 }
@@ -67,6 +73,8 @@ impl From<Stored> for ConnectionProfile {
             ca_cert_path: s.ca_cert_path,
             has_password: false,
             ssh: s.ssh,
+            engine: s.engine,
+            mongo: s.mongo,
         }
     }
 }
@@ -150,6 +158,8 @@ mod tests {
             ca_cert_path: None,
             has_password: true,
             ssh: Default::default(),
+            engine: Default::default(),
+            mongo: Default::default(),
         }
     }
 
@@ -224,6 +234,36 @@ mod tests {
         assert!(load(&dir).unwrap().is_empty());
         assert!(!dir.join("profiles.json").exists());
         clear(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profiles_saved_before_engines_existed_are_postgres_and_mongo_fields_round_trip() {
+        let dir = std::env::temp_dir().join(format!("hyrax-engine-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("profiles.json"),
+            r#"[{"id":"a","name":"viejo","host":"h","port":5432,"database":"d","user":"u"}]"#,
+        )
+        .unwrap();
+        let loaded = load(&dir).unwrap();
+        assert_eq!(loaded[0].engine, Engine::Postgres);
+
+        let mut mongo = sample("m", "atlas");
+        mongo.engine = Engine::Mongodb;
+        mongo.mongo = MongoSettings {
+            srv: true,
+            extra_hosts: "h2:27017".into(),
+            auth_source: Some("admin".into()),
+            replica_set: Some("rs0".into()),
+            direct_connection: false,
+        };
+        save(&dir, mongo).unwrap();
+        let again = find(&dir, "m").unwrap();
+        assert_eq!(again.engine, Engine::Mongodb);
+        assert!(again.mongo.srv);
+        assert_eq!(again.mongo.replica_set.as_deref(), Some("rs0"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

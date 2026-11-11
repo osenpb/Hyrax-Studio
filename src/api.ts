@@ -28,6 +28,27 @@ export const noSsh = (): SshSettings => ({
   clearSecret: false,
 });
 
+export type Engine = "postgres" | "mongodb";
+
+export interface MongoSettings {
+  /** mongodb+srv:// (Atlas): el host es un nombre DNS y no lleva puerto. */
+  srv: boolean;
+  /** Otros nodos del conjunto de réplicas, separados por comas. */
+  extraHosts: string;
+  /** Base donde se autentica el usuario (vacío = admin). */
+  authSource: string | null;
+  replicaSet: string | null;
+  directConnection: boolean;
+}
+
+export const noMongo = (): MongoSettings => ({
+  srv: false,
+  extraHosts: "",
+  authSource: null,
+  replicaSet: null,
+  directConnection: false,
+});
+
 export interface ConnectionProfile {
   id: string;
   name: string;
@@ -42,6 +63,8 @@ export interface ConnectionProfile {
   caCertPath: string | null;
   hasPassword: boolean;
   ssh: SshSettings;
+  engine: Engine;
+  mongo: MongoSettings;
 }
 
 export interface SessionInfo {

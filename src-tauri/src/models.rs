@@ -9,6 +9,35 @@ pub enum SslMode {
     Verify,
 }
 
+/// Motor de la conexión. Los perfiles guardados antes de existir este campo son PostgreSQL.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Engine {
+    #[default]
+    Postgres,
+    Mongodb,
+}
+
+/// Ajustes propios de MongoDB. El host y el puerto principales, el usuario, la contraseña, el modo TLS y
+/// el certificado de la CA son los mismos campos del perfil que usa PostgreSQL.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongoSettings {
+    /// `mongodb+srv://` (Atlas): el host es un nombre DNS y no se indica puerto.
+    #[serde(default)]
+    pub srv: bool,
+    /// Otros nodos del conjunto de réplicas, separados por comas (`host2:27017,host3:27017`).
+    #[serde(default)]
+    pub extra_hosts: String,
+    /// Base de datos donde se autentica el usuario (por omisión `admin`).
+    #[serde(default)]
+    pub auth_source: Option<String>,
+    #[serde(default)]
+    pub replica_set: Option<String>,
+    #[serde(default)]
+    pub direct_connection: bool,
+}
+
 /// Túnel SSH opcional. `secret` (frase de la clave o contraseña SSH) solo viaja de la interfaz al
 /// backend; se guarda en el almacén del sistema y nunca en `profiles.json`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -82,6 +111,10 @@ pub struct ConnectionProfile {
     pub has_password: bool,
     #[serde(default)]
     pub ssh: SshSettings,
+    #[serde(default)]
+    pub engine: Engine,
+    #[serde(default)]
+    pub mongo: MongoSettings,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

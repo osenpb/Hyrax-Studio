@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, errorText, noSsh, type ConnectionProfile } from "../api";
+import { api, errorText, noMongo, noSsh, type ConnectionProfile } from "../api";
 import { parseConnectionString } from "../connstring";
 
 interface Props {
@@ -23,12 +23,22 @@ function blank(): ConnectionProfile {
     caCertPath: null,
     hasPassword: false,
     ssh: noSsh(),
+    engine: "postgres",
+    mongo: noMongo(),
   };
 }
 
 export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
   const [p, setP] = useState<ConnectionProfile>(
-    initial ? { ...initial, password: "", ssh: { ...(initial.ssh ?? noSsh()), secret: "" } } : blank(),
+    initial
+      ? {
+          ...initial,
+          password: "",
+          ssh: { ...(initial.ssh ?? noSsh()), secret: "" },
+          engine: initial.engine ?? "postgres",
+          mongo: initial.mongo ?? noMongo(),
+        }
+      : blank(),
   );
   const [unknownKey, setUnknownKey] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);

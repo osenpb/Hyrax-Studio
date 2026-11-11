@@ -22,6 +22,8 @@ pub fn profile(read_only: bool) -> ConnectionProfile {
         ca_cert_path: None,
         has_password: false,
         ssh: Default::default(),
+        engine: Default::default(),
+        mongo: Default::default(),
     }
 }
 
