@@ -1,8 +1,10 @@
 mod commands;
 mod db;
+mod edit;
 mod export;
 mod models;
 mod profiles;
+mod sqlscan;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -29,6 +31,9 @@ pub fn run() {
             commands::run_sql,
             commands::export_table,
             commands::export_sql,
+            commands::preview_changes,
+            commands::apply_changes,
+            commands::run_sql_dry,
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar PgDesk");

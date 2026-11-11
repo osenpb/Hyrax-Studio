@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::db::Session;
 use crate::models::*;
+use crate::edit::{self, ApplyResult, ChangeSet};
 use crate::{db, export, profiles};
 
 #[derive(Default)]
@@ -111,6 +112,7 @@ pub async fn cancel_query(state: State<'_, Sessions>, id: String) -> Result<(), 
 #[tauri::command]
 pub async fn list_databases(state: State<'_, Sessions>, id: String) -> Result<Vec<String>, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::list_databases(&session.client).await
 }
 
@@ -120,12 +122,14 @@ pub async fn completion_schema(
     id: String,
 ) -> Result<Vec<CompletionTable>, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::completion_schema(&session.client).await
 }
 
 #[tauri::command]
 pub async fn list_schemas(state: State<'_, Sessions>, id: String) -> Result<Vec<SchemaInfo>, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::list_schemas(&session.client).await
 }
 
@@ -136,6 +140,7 @@ pub async fn list_relations(
     schema: String,
 ) -> Result<Vec<RelationInfo>, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::list_relations(&session.client, &schema).await
 }
 
@@ -147,6 +152,7 @@ pub async fn list_columns(
     table: String,
 ) -> Result<Vec<ColumnInfo>, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::list_columns(&session.client, &schema, &table).await
 }
 
@@ -163,6 +169,7 @@ pub async fn table_data(
 ) -> Result<TablePage, String> {
     let limit = limit.clamp(1, 5000);
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::table_page(
         &session,
         &schema,
@@ -184,6 +191,7 @@ pub async fn count_rows(
     filters: Vec<ColumnFilter>,
 ) -> Result<i64, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::count_rows(&session, &schema, &table, &filters).await
 }
 
@@ -196,6 +204,7 @@ pub async fn run_sql(
     timeout_ms: u64,
 ) -> Result<QueryOutput, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     db::run_sql(&session, &sql, limit.clamp(1, 10000) as usize, timeout_ms).await
 }
 
@@ -211,6 +220,7 @@ pub async fn export_table(
     path: String,
 ) -> Result<ExportResult, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     let sql = db::table_select_sql(&schema, &table, &filters, &order, None)?;
     let label = format!("{}.{}", db::quote_ident(&schema), db::quote_ident(&table));
     let rows = export::export_query(&session, &sql, format, &path, &label).await?;
@@ -226,7 +236,47 @@ pub async fn export_sql(
     path: String,
 ) -> Result<ExportResult, String> {
     let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
     let statement = sql.trim().trim_end_matches(';').trim().to_string();
     let rows = export::export_query(&session, &statement, format, &path, "\"resultado\"").await?;
     Ok(ExportResult { rows })
+}
+
+#[tauri::command]
+pub async fn preview_changes(
+    state: State<'_, Sessions>,
+    id: String,
+    schema: String,
+    table: String,
+    changes: ChangeSet,
+) -> Result<Vec<String>, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
+    edit::preview_changes(&session, &schema, &table, &changes).await
+}
+
+#[tauri::command]
+pub async fn apply_changes(
+    state: State<'_, Sessions>,
+    id: String,
+    schema: String,
+    table: String,
+    changes: ChangeSet,
+) -> Result<ApplyResult, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.write().await;
+    edit::apply_changes(&session, &schema, &table, &changes).await
+}
+
+#[tauri::command]
+pub async fn run_sql_dry(
+    state: State<'_, Sessions>,
+    id: String,
+    sql: String,
+    limit: u32,
+    timeout_ms: u64,
+) -> Result<QueryOutput, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.write().await;
+    db::run_sql_dry(&session, &sql, limit.clamp(1, 10000) as usize, timeout_ms).await
 }

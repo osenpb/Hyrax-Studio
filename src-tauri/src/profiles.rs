@@ -63,6 +63,7 @@ mod tests {
             password: "p".into(),
             ssl_mode: SslMode::Disable,
             read_only: true,
+            production: false,
         }
     }
 

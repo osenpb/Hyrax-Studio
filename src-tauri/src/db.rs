@@ -17,6 +17,7 @@ pub struct Session {
     pub client: Client,
     pub cancel: CancelToken,
     pub ssl: SslMode,
+    pub gate: tokio::sync::RwLock<()>,
 }
 
 pub fn describe(e: &tokio_postgres::Error) -> String {
@@ -162,6 +163,7 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
                 cancel: client.cancel_token(),
                 client,
                 ssl: SslMode::Disable,
+                gate: tokio::sync::RwLock::new(()),
             }
         }
         SslMode::Require => {
@@ -174,6 +176,7 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
                 cancel: client.cancel_token(),
                 client,
                 ssl: SslMode::Require,
+                gate: tokio::sync::RwLock::new(()),
             }
         }
     };
@@ -410,6 +413,32 @@ pub async fn run_sql(
     })
 }
 
+pub async fn run_sql_dry(
+    session: &Session,
+    sql: &str,
+    limit: usize,
+    timeout_ms: u64,
+) -> Result<QueryOutput, String> {
+    if let Some(word) = crate::sqlscan::transaction_control(sql) {
+        return Err(format!(
+            "El ensayo con ROLLBACK no admite sentencias de control de transacción ({word}). Quítalas o ejecuta la consulta normalmente."
+        ));
+    }
+    let started = Instant::now();
+    session.client.batch_execute("BEGIN").await.map_err(err)?;
+    let outcome = run_simple(session, sql, limit, timeout_ms).await;
+    let rollback = match session.client.batch_execute("ROLLBACK").await {
+        Ok(()) => Ok(()),
+        Err(_) => session.client.batch_execute("ROLLBACK").await,
+    };
+    let results = outcome?;
+    rollback.map_err(err)?;
+    Ok(QueryOutput {
+        results,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
 async fn estimated_rows(client: &Client, schema: &str, table: &str) -> Result<Option<i64>, String> {
     let rows = client
         .query(
@@ -495,6 +524,7 @@ mod tests {
             password: std::env::var("PGDESK_TEST_PASSWORD").ok()?,
             ssl_mode: SslMode::Disable,
             read_only,
+            production: false,
         })
     }
 

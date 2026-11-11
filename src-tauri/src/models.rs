@@ -26,6 +26,8 @@ pub struct ConnectionProfile {
     pub ssl_mode: SslMode,
     #[serde(default = "default_read_only")]
     pub read_only: bool,
+    #[serde(default)]
+    pub production: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
