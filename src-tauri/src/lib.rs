@@ -54,6 +54,13 @@ pub fn run() {
             commands::drop_database,
             commands::open_text_file,
             commands::save_text_file,
+            commands::mongo_connect,
+            commands::mongo_disconnect,
+            commands::mongo_list_databases,
+            commands::mongo_list_collections,
+            commands::mongo_find,
+            commands::mongo_count,
+            commands::mongo_estimated_count,
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar Hyrax");

@@ -1,5 +1,7 @@
 //! Soporte para MongoDB (fase M0: probar la conexión). Ver `docs/MONGODB.md`.
 
+pub mod browse;
+pub mod query;
 pub mod uri;
 
 use std::path::PathBuf;
@@ -12,6 +14,14 @@ use mongodb::Client;
 use crate::models::{ConnectionProfile, Engine, SslMode};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Sesión de MongoDB abierta: una por conexión guardada (el driver ya agrupa las conexiones de red).
+pub struct MongoSession {
+    pub client: Client,
+    pub production: bool,
+    /// Base indicada en la conexión (para usuarios que no pueden listar todas).
+    pub default_db: String,
+}
 
 /// Crea el cliente a partir del perfil. La contraseña va en las opciones, nunca en la URI.
 pub async fn connect(profile: &ConnectionProfile) -> Result<Client, String> {
@@ -70,16 +80,19 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Client, String> {
     Client::with_options(options).map_err(|e| format!("No se pudo crear el cliente de MongoDB: {e}"))
 }
 
-/// Conecta, comprueba que el servidor responde y devuelve su versión.
-pub async fn test(profile: &ConnectionProfile) -> Result<String, String> {
-    let client = connect(profile).await?;
-    let admin = client.database("admin");
-    let info = admin
+/// Pregunta la versión del servidor (`buildInfo` no escribe nada).
+pub async fn version(client: &Client) -> Result<String, String> {
+    let info = client
+        .database("admin")
         .run_command(doc! { "buildInfo": 1 })
         .await
         .map_err(|e| format!("No se pudo conectar con MongoDB: {e}"))?;
-    let version = info.get_str("version").unwrap_or("desconocida").to_string();
-    Ok(format!("MongoDB {version}"))
+    Ok(format!("MongoDB {}", info.get_str("version").unwrap_or("desconocida")))
+}
+
+/// Conecta, comprueba que el servidor responde y devuelve su versión.
+pub async fn test(profile: &ConnectionProfile) -> Result<String, String> {
+    version(&connect(profile).await?).await
 }
 
 #[cfg(test)]

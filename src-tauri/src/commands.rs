@@ -13,7 +13,11 @@ use crate::files::{self, ApprovedPaths, Kind};
 use crate::{db, dropping, export, import, profiles, schema, secrets};
 
 #[derive(Default)]
-pub struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
+pub struct Sessions(
+    Mutex<HashMap<String, Arc<Session>>>,
+    /// Sesiones de MongoDB, por id de conexión.
+    Mutex<HashMap<String, Arc<mongo::MongoSession>>>,
+);
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -82,6 +86,7 @@ async fn session(state: &State<'_, Sessions>, id: &str) -> Result<Arc<Session>, 
 async fn drop_profile_sessions(state: &State<'_, Sessions>, profile_id: &str) {
     let prefix = format!("{profile_id}::");
     state.0.lock().await.retain(|key, _| !key.starts_with(&prefix));
+    state.1.lock().await.remove(profile_id);
 }
 
 #[tauri::command]
@@ -161,6 +166,7 @@ pub async fn reset_app_data(
     }
     let dir = config_dir(&app)?;
     state.0.lock().await.clear();
+    state.1.lock().await.clear();
     reset_in(&dir)
 }
 
@@ -208,6 +214,127 @@ fn reset_in(dir: &std::path::Path) -> Result<usize, String> {
     }
     mark_legacy_checked(dir);
     Ok(list.len())
+}
+
+// ---------------------------------------------------------------------------------------------
+// MongoDB (fase M1: explorar en solo lectura)
+// ---------------------------------------------------------------------------------------------
+
+async fn mongo_session(state: &State<'_, Sessions>, id: &str) -> Result<Arc<mongo::MongoSession>, String> {
+    state
+        .1
+        .lock()
+        .await
+        .get(id)
+        .cloned()
+        .ok_or_else(|| "La conexión de MongoDB no está abierta. Vuelve a conectarte.".to_string())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MongoConnectInfo {
+    pub version: String,
+    pub read_only: bool,
+}
+
+#[tauri::command]
+pub async fn mongo_connect(
+    app: AppHandle,
+    state: State<'_, Sessions>,
+    id: String,
+) -> Result<MongoConnectInfo, String> {
+    let mut profile = profiles::find(&config_dir(&app)?, &id)?;
+    if profile.engine != Engine::Mongodb {
+        return Err("La conexión no es de MongoDB.".to_string());
+    }
+    load_secrets(&mut profile)?;
+    let client = mongo::connect(&profile).await?;
+    let version = mongo::version(&client).await?;
+    let session = mongo::MongoSession {
+        client,
+        production: profile.production,
+        default_db: profile.database.trim().to_string(),
+    };
+    state.1.lock().await.insert(id, Arc::new(session));
+    // En M1 todo es de solo lectura: no hay ningún comando de escritura.
+    Ok(MongoConnectInfo { version, read_only: true })
+}
+
+#[tauri::command]
+pub async fn mongo_disconnect(state: State<'_, Sessions>, id: String) -> Result<(), String> {
+    state.1.lock().await.remove(&id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mongo_list_databases(
+    state: State<'_, Sessions>,
+    id: String,
+) -> Result<Vec<mongo::browse::DatabaseInfo>, String> {
+    let s = mongo_session(&state, &id).await?;
+    mongo::browse::list_databases(&s.client, &s.default_db).await
+}
+
+#[tauri::command]
+pub async fn mongo_list_collections(
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+) -> Result<Vec<mongo::browse::CollectionInfo>, String> {
+    let s = mongo_session(&state, &id).await?;
+    mongo::browse::list_collections(&s.client, &database).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn mongo_find(
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+    collection: String,
+    filter: String,
+    sort: String,
+    projection: String,
+    skip: u64,
+    limit: i64,
+    timeout_ms: u64,
+) -> Result<mongo::browse::FindPage, String> {
+    let s = mongo_session(&state, &id).await?;
+    let params = mongo::browse::FindParams {
+        filter: mongo::query::parse_document(&filter, "El filtro")?,
+        sort: mongo::query::parse_document(&sort, "El orden")?,
+        projection: mongo::query::parse_document(&projection, "La proyección")?,
+        skip,
+        limit,
+        timeout: mongo::query::effective_timeout(timeout_ms, s.production),
+    };
+    mongo::browse::find(&s.client, &database, &collection, params).await
+}
+
+#[tauri::command]
+pub async fn mongo_count(
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+    collection: String,
+    filter: String,
+    timeout_ms: u64,
+) -> Result<u64, String> {
+    let s = mongo_session(&state, &id).await?;
+    let filter = mongo::query::parse_document(&filter, "El filtro")?;
+    let timeout = mongo::query::effective_timeout(timeout_ms, s.production);
+    mongo::browse::count(&s.client, &database, &collection, filter, timeout).await
+}
+
+#[tauri::command]
+pub async fn mongo_estimated_count(
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+    collection: String,
+) -> Result<u64, String> {
+    let s = mongo_session(&state, &id).await?;
+    mongo::browse::estimated_count(&s.client, &database, &collection).await
 }
 
 #[tauri::command]

@@ -540,6 +540,7 @@ dependencies = [
  "rand 0.9.5",
  "serde",
  "serde_bytes",
+ "serde_json",
  "simdutf8",
  "thiserror 2.0.21",
  "time",
@@ -2363,6 +2364,7 @@ dependencies = [
 name = "hyrax"
 version = "0.1.0"
 dependencies = [
+ "bson",
  "futures-util",
  "keyring",
  "mongodb",
