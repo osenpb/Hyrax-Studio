@@ -6,6 +6,7 @@ mod export;
 mod files;
 mod import;
 mod models;
+mod mongo;
 mod profiles;
 mod schema;
 mod secrets;

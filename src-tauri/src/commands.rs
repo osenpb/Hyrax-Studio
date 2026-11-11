@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::db::Session;
 use crate::models::*;
+use crate::mongo;
 use crate::edit::{self, ApplyResult, ChangeSet};
 use crate::files::{self, ApprovedPaths, Kind};
 use crate::{db, dropping, export, import, profiles, schema, secrets};
@@ -213,6 +214,9 @@ fn reset_in(dir: &std::path::Path) -> Result<usize, String> {
 pub async fn test_connection(profile: ConnectionProfile) -> Result<String, String> {
     let mut profile = profile;
     load_secrets(&mut profile)?;
+    if profile.engine == Engine::Mongodb {
+        return mongo::test(&profile).await;
+    }
     let session = db::connect(&profile).await?;
     db::server_version(&session.client).await
 }
@@ -225,6 +229,9 @@ pub async fn connect_profile(
     database: String,
 ) -> Result<ConnectInfo, String> {
     let mut profile = profiles::find(&config_dir(&app)?, &id)?;
+    if profile.engine == Engine::Mongodb {
+        return Err("El explorador de MongoDB llega en la fase M1. Por ahora puedes crear la conexión y probarla.".to_string());
+    }
     load_secrets(&mut profile)?;
     profile.database = database.clone();
     let session = db::connect(&profile).await?;
