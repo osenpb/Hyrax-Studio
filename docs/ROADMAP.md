@@ -49,9 +49,10 @@ Status: ✅ done · 🟡 partial · ⬜ pending
 - 🟡 Installer (built unsigned); ⬜ code signing and automatic updates.
 - Security review before every release.
 
-## MongoDB (being planned)
+## MongoDB (in progress)
 
-- **MongoDB support**, with a start screen to choose the engine. It was decided (2026-11-11) to plan it now, in parallel with stages 12 to 14. Scope, decisions, phases (M0 to M4) and risks are in [MONGODB.md](MONGODB.md). The security rules stay: read-only by default, production marked with confirmation and credentials in the system store; in Mongo, read-only is a weaker guardrail (there is no per-session equivalent) and the real barrier is a user with the `read` role.
+- ✅ **M0 (2026-11-11):** `engine` field, start screen, one connection form per engine, MongoDB connection test with the official driver. ⬜ M1 to M4 (explore, query and analysis, safe writing, advanced connection) are pending.
+- **MongoDB support**, with a start screen to choose the engine. It was decided (2026-11-11) to build it in parallel with stages 12 to 14. Scope, decisions, phases (M0 to M4) and risks are in [MONGODB.md](MONGODB.md). The security rules stay: read-only by default, production marked with confirmation and credentials in the system store; in Mongo, read-only is a weaker guardrail (there is no per-session equivalent) and the real barrier is a user with the `read` role.
 
 ## Known limitations
 - All values are shown as text (Postgres simple protocol); there are no native types in the grid.

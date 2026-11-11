@@ -1,6 +1,6 @@
 # Plan: MongoDB support
 
-Status: **planning** (2026-11-11). There is no MongoDB code yet. This document fixes the scope, the proposed technical decisions, the phases and the risks, so they can be agreed before writing code.
+Status: **phase M0 done** (2026-11-11): MongoDB connections can be created, saved and tested; the explorer (M1) is next. This document fixes the scope, the technical decisions, the phases and the risks.
 
 Goal: Hyrax Studio can connect to MongoDB and cover the everyday essentials (browse, query, review and fix documents) with the same safety rules it already has for PostgreSQL: read-only by default, production marked with confirmation, credentials in the system store, and the operation shown before it is applied.
 
@@ -60,12 +60,13 @@ What it implies: the connection profile gains an `engine` field (`postgres` by d
 - Official `mongodb` driver (async, on Tokio, which we already use) and `bson`. Versions current at planning time: `mongodb 3.x`, `bson 3.x`.
 - Values travel to the UI as **Extended JSON** (relaxed for display, canonical for editing), so types like `Decimal128`, `Long` or `ObjectId` are not lost.
 
-**Driver spike (done 2026-11-11, dependency not kept yet):**
+**Driver spike (done 2026-11-11, dependency now in use):**
 - `mongodb 3` with `default-features = false` and `features = ["compat-3-3-0", "rustls-tls", "dns-resolver", "bson-3"]` **compiles on Windows** with no extra tools: it uses `rustls` with `ring`, and `aws-lc-sys` (which would need CMake and NASM) is not in the dependency tree. `dns-resolver` brings the SRV lookups Atlas needs.
 - The driver requires `compat-3-3-0` to be enabled explicitly.
 - **Two TLS stacks:** PostgreSQL uses `native-tls` (the Windows store), MongoDB would use `rustls`. `rustls-tls` ships bundled public roots (`webpki-roots`) and does **not** read the Windows certificate store, so a company server with a private CA needs its CA given as a PEM file (the same "custom CA" field PG already has). Atlas works with the bundled roots.
-- **Not measured yet:** the binary-size increase (needs a release build that actually uses the driver) and `cargo audit` on the new dependencies. Both are acceptance criteria for M0.
-- The change was reverted rather than committed, because an unused dependency adds nothing; it is re-added together with the first code that uses it.
+- **Binary size (release, measured):** 6.83 MB → 9.03 MB (+2.2 MB, +32%) with the driver linked and used. Accepted.
+- **`cargo audit`:** the new dependencies add **no new notices**; the two that appear (`crypto-bigint`, `rsa`) come from `russh` and are unchanged.
+- The release build with the driver took about 16 minutes on the development machine (single codegen unit + LTO), and a debug build with incremental compilation filled the disk (24 GB of cache): builds are now run with `CARGO_INCREMENTAL=0`.
 
 ### 4.2 Code architecture
 - Profile: `engine: postgres | mongodb`, and for Mongo its own fields (hosts, `srv`, auth database, replica set, TLS, read preference). The URI is built when connecting; **the password is never part of the stored URI**.
@@ -98,12 +99,15 @@ In PostgreSQL read-only mode relies on `default_transaction_read_only`, a server
 
 Each phase ends with something usable, automated tests and a check in the real application. Relative size: S small, M medium, L large.
 
-**M0 — Foundations (M)**
-- Re-add the driver and measure binary size and `cargo audit` (acceptance criteria from the spike).
-- `engine` field in the profile, with a migration that leaves existing ones as `postgres`.
-- Start screen as a light connection list with "New connection → choose engine" (the Mongo option stays disabled until M1).
-- One connection form per engine and engine detection when pasting a string.
-- Test base: disposable `mongod` and `HYRAX_MONGO_TEST_*` variables (see section 7).
+**M0 — Foundations (M) — ✅ done**
+- ✅ Driver added; binary size and `cargo audit` measured (see 4.1).
+- ✅ `engine` field in the profile (`postgres` or `mongodb`), with MongoDB-specific settings; profiles saved earlier load as `postgres`.
+- ✅ Start screen: light connection list (engine badge, production mark, most recently used first) and one "New connection" button per engine.
+- ✅ One connection form per engine: SRV (Atlas) toggle, replica-set nodes, auth database, TLS with an optional CA file, and engine detection when pasting a `postgresql://`, `mongodb://` or `mongodb+srv://` string.
+- ✅ "Test" works for MongoDB (`buildInfo`); the URI is built without credentials and host names are validated against URI injection.
+- ✅ Test base: unit tests for URI building and connection strings, plus an ignored integration test that needs a disposable `mongod` (`HYRAX_MONGO_TEST_HOST` and `HYRAX_MONGO_TEST_PORT`; optionally `HYRAX_MONGO_TEST_USER` and `HYRAX_MONGO_TEST_PASSWORD`). It only runs `buildInfo`, which writes nothing.
+- Verified in the real application against a disposable `mongod`: test connection returned the server version.
+- Opening a MongoDB connection from the tree or the start screen shows that the explorer arrives in M1.
 
 **M1 — Connect and explore, read-only (L)** → *first useful milestone*
 - Connection to **local, Atlas (`mongodb+srv`) and a company server**: hosts, SRV, user, auth database, TLS with a custom CA file; test and save.
