@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Hyrax",
+  "productName": "Hyrax Studio",
   "version": "0.1.0",
   "identifier": "dev.osen.hyrax",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Hyrax",
+        "title": "Hyrax Studio",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

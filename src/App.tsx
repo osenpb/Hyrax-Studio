@@ -503,7 +503,7 @@ export default function App() {
           {tabs.length === 0 && (
             <div className="welcome">
               <img className="welcome-logo" src={logoLarge} alt="" />
-              <h1>Hyrax</h1>
+              <h1>Hyrax Studio</h1>
               <p>Cliente PostgreSQL de escritorio</p>
               <ul>
                 <li>

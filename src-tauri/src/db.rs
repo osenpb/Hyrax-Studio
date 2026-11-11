@@ -199,7 +199,7 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
         .user(&profile.user)
         .password(&profile.password)
         .connect_timeout(Duration::from_secs(10))
-        .application_name("Hyrax");
+        .application_name("Hyrax Studio");
 
     let make = |client: Client| Session {
         cancel: client.cancel_token(),
