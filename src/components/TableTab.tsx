@@ -34,7 +34,7 @@ interface Props {
   table: string;
   readOnly: boolean;
   production: boolean;
-  onSetReadOnly: (readOnly: boolean) => Promise<void>;
+  onSetReadOnly: (readOnly: boolean, confirm?: string) => Promise<void>;
 }
 
 const PAGE_SIZES = [50, 100, 200, 500, 1000];
@@ -60,6 +60,12 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
   const lastApplied = useRef("[]");
   const nextInsertId = useRef(0);
 
+  const pkColumns = columns?.filter((c) => c.isPrimaryKey).map((c) => c.name) ?? [];
+  const effectiveSorts: SortKey[] =
+    sorts.length > 0 ? sorts : pkColumns.map((column) => ({ column, descending: false }));
+  const orderKey = JSON.stringify(effectiveSorts);
+  const columnsReady = columns !== null;
+
   useEffect(() => {
     const timer = setTimeout(() => {
       const next = parseFilters(filterInputs);
@@ -75,25 +81,30 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
   }, [filterInputs]);
 
   useEffect(() => {
+    if (!columnsReady) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
     api
-      .tableData(connId, schema, table, pageSize, offset, applied, sorts)
+      .tableData(connId, schema, table, pageSize, offset, applied, effectiveSorts)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setError(errorText(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [connId, schema, table, pageSize, offset, applied, sorts, reloadKey]);
+  }, [connId, schema, table, pageSize, offset, applied, orderKey, columnsReady, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
     api
       .listColumns(connId, schema, table)
       .then((c) => !cancelled && setColumns(c))
-      .catch((e) => !cancelled && setError(errorText(e)));
+      .catch((e) => {
+        if (cancelled) return;
+        setError(errorText(e));
+        setColumns((prev) => prev ?? []);
+      });
     return () => {
       cancelled = true;
     };
@@ -138,7 +149,7 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
     setExporting(true);
     setError(null);
     try {
-      const result = await api.exportTable(connId, schema, table, applied, sorts, format, path);
+      const result = await api.exportTable(connId, schema, table, applied, effectiveSorts, format, path);
       setNotice(`Se exportaron ${result.rows.toLocaleString()} filas a ${path}`);
     } catch (e) {
       setError(errorText(e));
@@ -152,7 +163,6 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
 
   const pageColumns = page?.result.columns ?? [];
   const rows = page?.result.rows ?? [];
-  const pkColumns = columns?.filter((c) => c.isPrimaryKey).map((c) => c.name) ?? [];
   const pkIndexes = pkColumns.map((name) => pageColumns.indexOf(name));
   const pkReady = pkColumns.length > 0 && pkIndexes.every((i) => i >= 0);
   const editBlock = readOnly

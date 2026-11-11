@@ -12,6 +12,7 @@ import ConnectionDialog from "./components/ConnectionDialog";
 import TableTab from "./components/TableTab";
 import SqlTab from "./components/SqlTab";
 import Icon from "./components/Icon";
+import { clearHistory } from "./history";
 
 interface Tab {
   id: string;
@@ -92,8 +93,8 @@ export default function App() {
     }
   };
 
-  const changeReadOnly = async (key: string, enabled: boolean) => {
-    const readOnly = await api.setReadOnly(key, enabled);
+  const changeReadOnly = async (key: string, enabled: boolean, confirm?: string) => {
+    const readOnly = await api.setReadOnly(key, enabled, confirm);
     setConnected((prev) => (key in prev ? { ...prev, [key]: { ...prev[key], readOnly } } : prev));
   };
 
@@ -175,6 +176,7 @@ export default function App() {
     if (!toDelete) return;
     const id = toDelete.id;
     await api.deleteProfile(id).catch((e) => setBanner(errorText(e)));
+    clearHistory(id);
     forgetSessions(id);
     closeTabsOf(id);
     setToDelete(null);
@@ -287,7 +289,7 @@ export default function App() {
                   table={t.table!}
                   readOnly={connected[t.connId]?.readOnly ?? true}
                   production={isProduction(t.connId)}
-                  onSetReadOnly={(enabled) => changeReadOnly(t.connId, enabled)}
+                  onSetReadOnly={(enabled, confirm) => changeReadOnly(t.connId, enabled, confirm)}
                 />
               ) : (
                 <SqlTab
@@ -295,7 +297,7 @@ export default function App() {
                   connName={nameOf(t.connId)}
                   readOnly={connected[t.connId]?.readOnly ?? true}
                   production={isProduction(t.connId)}
-                  onSetReadOnly={(enabled) => changeReadOnly(t.connId, enabled)}
+                  onSetReadOnly={(enabled, confirm) => changeReadOnly(t.connId, enabled, confirm)}
                 />
               )}
             </div>

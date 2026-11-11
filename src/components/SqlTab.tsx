@@ -3,7 +3,14 @@ import { format as formatSql } from "sql-formatter";
 import { api, databaseOfSession, errorText, profileOfSession, type ExportFormat, type QueryOutput } from "../api";
 import { findDangers, type Danger } from "../sqlscan";
 import { askExportPath } from "../exporting";
-import { addHistory, clearHistory, loadHistory, type HistoryItem } from "../history";
+import {
+  addHistory,
+  clearHistory,
+  historyEnabled,
+  loadHistory,
+  setHistoryEnabled,
+  type HistoryItem,
+} from "../history";
 import ResultGrid from "./ResultGrid";
 import ExportMenu from "./ExportMenu";
 import ModeChip from "./ModeChip";
@@ -15,7 +22,7 @@ interface Props {
   connName: string;
   readOnly: boolean;
   production: boolean;
-  onSetReadOnly: (enabled: boolean) => Promise<void>;
+  onSetReadOnly: (readOnly: boolean, confirm?: string) => Promise<void>;
 }
 
 const ROW_LIMIT = 1000;
@@ -41,6 +48,7 @@ export default function SqlTab({ connId, connName, readOnly, production, onSetRe
   const [danger, setDanger] = useState<{ text: string; dangers: Danger[] } | null>(null);
   const [dry, setDry] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOn, setHistoryOn] = useState(historyEnabled);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(() => loadHistory(profileId));
@@ -94,7 +102,7 @@ export default function SqlTab({ connId, connName, readOnly, production, onSetRe
       setError(errorText(e));
     } finally {
       setRunning(false);
-      if (record) setHistory(addHistory(profileId, { sql: text.trim(), at: Date.now(), ms, ok }));
+      if (record && historyOn) setHistory(addHistory(profileId, { sql: text.trim(), at: Date.now(), ms, ok }));
     }
   };
 
@@ -204,7 +212,7 @@ export default function SqlTab({ connId, connName, readOnly, production, onSetRe
         <label className="inline-select" title="Tiempo máximo por consulta">
           Límite
           <select value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))} disabled={running}>
-            {TIMEOUTS.map((t) => (
+            {(production ? TIMEOUTS.filter((t) => t.ms !== 0) : TIMEOUTS).map((t) => (
               <option key={t.ms} value={t.ms}>
                 {t.label}
               </option>
@@ -284,6 +292,17 @@ export default function SqlTab({ connId, connName, readOnly, production, onSetRe
             <strong>Historial</strong>
             <span className="muted">Clic para cargar la consulta en el editor</span>
             <span className="spacer" />
+            <label className="inline-check" title="Las consultas pueden contener datos sensibles; se guardan en este equipo sin cifrar">
+              <input
+                type="checkbox"
+                checked={historyOn}
+                onChange={(e) => {
+                  setHistoryOn(e.target.checked);
+                  setHistoryEnabled(e.target.checked);
+                }}
+              />
+              Guardar historial
+            </label>
             <button
               className="small"
               disabled={history.length === 0}

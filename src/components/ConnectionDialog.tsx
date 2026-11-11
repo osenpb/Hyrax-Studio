@@ -19,11 +19,13 @@ function blank(): ConnectionProfile {
     sslMode: "disable",
     readOnly: true,
     production: false,
+    caCertPath: null,
+    hasPassword: false,
   };
 }
 
 export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
-  const [p, setP] = useState<ConnectionProfile>(initial ?? blank());
+  const [p, setP] = useState<ConnectionProfile>(initial ? { ...initial, password: "" } : blank());
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -89,16 +91,41 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
           </label>
           <label className="grow">
             Contraseña
-            <input type="password" value={p.password} onChange={(e) => set("password", e.target.value)} />
+            <input
+              type="password"
+              autoComplete="off"
+              value={p.password}
+              placeholder={initial?.hasPassword ? "Guardada en el sistema (vacío = conservar)" : ""}
+              onChange={(e) => set("password", e.target.value)}
+            />
           </label>
         </div>
         <label>
           SSL
           <select value={p.sslMode} onChange={(e) => set("sslMode", e.target.value as ConnectionProfile["sslMode"])}>
             <option value="disable">Desactivado</option>
-            <option value="require">Requerido (sin verificar certificado)</option>
+            <option value="require">Cifrado sin verificar el certificado</option>
+            <option value="verify">Cifrado y verificar el certificado (recomendado)</option>
           </select>
         </label>
+        {p.sslMode === "require" && (
+          <div className="alert alert-warn">
+            <span>
+              Sin verificar el certificado, la conexión va cifrada pero no se comprueba con quién hablas: un
+              intermediario podría suplantar al servidor. Úsalo solo en redes de confianza.
+            </span>
+          </div>
+        )}
+        {p.sslMode === "verify" && (
+          <label>
+            Certificado de la CA (archivo PEM, opcional)
+            <input
+              value={p.caCertPath ?? ""}
+              placeholder="Vacío = usar las entidades de confianza del sistema"
+              onChange={(e) => set("caCertPath", e.target.value.trim() === "" ? null : e.target.value)}
+            />
+          </label>
+        )}
         <label className="check">
           <input type="checkbox" checked={p.readOnly} onChange={(e) => set("readOnly", e.target.checked)} />
           <span>

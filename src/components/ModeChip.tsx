@@ -5,7 +5,7 @@ interface Props {
   readOnly: boolean;
   production: boolean;
   database: string;
-  onSet: (readOnly: boolean) => Promise<void>;
+  onSet: (readOnly: boolean, confirm?: string) => Promise<void>;
   onError?: (message: string) => void;
 }
 
@@ -17,7 +17,7 @@ export default function ModeChip({ readOnly, production, database, onSet, onErro
   const change = async (next: boolean) => {
     setBusy(true);
     try {
-      await onSet(next);
+      await onSet(next, !next && production ? typed : undefined);
       setAsking(false);
       setTyped("");
     } catch (e) {
@@ -57,7 +57,9 @@ export default function ModeChip({ readOnly, production, database, onSet, onErro
                   <span>Esta es una conexión de PRODUCCIÓN.</span>
                 </div>
                 <label>
-                  Escribe el nombre de la base de datos (<strong>{database}</strong>) para confirmar
+                  <span>
+                    Escribe el nombre de la base de datos (<strong>{database}</strong>) para confirmar
+                  </span>
                   <input
                     autoFocus
                     aria-label="Nombre de la base para confirmar"

@@ -9,9 +9,12 @@ const FILTERS: Record<ExportFormat, { name: string; extensions: string[] }> = {
 
 export async function askExportPath(baseName: string, format: ExportFormat): Promise<string | null> {
   const safe = baseName.replace(/[\\/:*?"<>|]/g, "_");
-  return save({
+  const path = await save({
     title: "Exportar resultado",
     defaultPath: `${safe}.${FILTERS[format].extensions[0]}`,
     filters: [FILTERS[format]],
   });
+  if (!path) return null;
+  const extension = `.${FILTERS[format].extensions[0]}`;
+  return path.toLowerCase().endsWith(extension) ? path : path + extension;
 }

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::pin::pin;
 
 use futures_util::TryStreamExt;
@@ -153,6 +154,29 @@ pub async fn write_rows<W: AsyncWrite + Unpin>(
     Ok(rows)
 }
 
+pub fn validate_path(path: &str, format: ExportFormat) -> Result<PathBuf, String> {
+    let target = PathBuf::from(path);
+    if !target.is_absolute() {
+        return Err("La ruta de exportación debe ser absoluta.".to_string());
+    }
+    let extension = match format {
+        ExportFormat::Csv => "csv",
+        ExportFormat::Json => "json",
+        ExportFormat::Sql => "sql",
+    };
+    match target.extension().and_then(|e| e.to_str()) {
+        Some(e) if e.eq_ignore_ascii_case(extension) => {}
+        _ => return Err(format!("El archivo de destino debe terminar en .{extension}.")),
+    }
+    if target.is_dir() {
+        return Err("La ruta de destino es una carpeta, no un archivo.".to_string());
+    }
+    match target.parent() {
+        Some(dir) if dir.is_dir() => Ok(target),
+        _ => Err("La carpeta de destino no existe.".to_string()),
+    }
+}
+
 pub async fn export_query(
     session: &Session,
     sql: &str,
@@ -160,6 +184,7 @@ pub async fn export_query(
     path: &str,
     table_label: &str,
 ) -> Result<u64, String> {
+    let path = validate_path(path, format)?;
     let statement = session.client.prepare(sql).await.map_err(db::err)?;
     let columns: Vec<(String, Kind)> = statement
         .columns()
@@ -171,7 +196,7 @@ pub async fn export_query(
     }
     db::set_timeout(&session.client, 0).await?;
 
-    let file = tokio::fs::File::create(path)
+    let file = tokio::fs::File::create(&path)
         .await
         .map_err(|e| format!("No se pudo crear el archivo: {e}"))?;
     let mut out = BufWriter::new(file);
@@ -179,7 +204,7 @@ pub async fn export_query(
         Ok(rows) => Ok(rows),
         Err(e) => {
             drop(out);
-            let _ = tokio::fs::remove_file(path).await;
+            let _ = tokio::fs::remove_file(&path).await;
             Err(e)
         }
     }
@@ -196,6 +221,33 @@ mod tests {
         assert_eq!(csv_field(Some("a,b")), "\"a,b\"");
         assert_eq!(csv_field(Some("say \"hi\"")), "\"say \"\"hi\"\"\"");
         assert_eq!(csv_field(Some("line\nbreak")), "\"line\nbreak\"");
+    }
+
+    #[test]
+    fn export_paths_must_be_absolute_existing_and_match_the_format() {
+        let dir = std::env::temp_dir();
+        let ok = dir.join("salida.CSV");
+        assert!(validate_path(ok.to_str().unwrap(), ExportFormat::Csv).is_ok());
+
+        assert!(validate_path("relativo.csv", ExportFormat::Csv).unwrap_err().contains("absoluta"));
+        assert!(validate_path("..\\..\\x.csv", ExportFormat::Csv).unwrap_err().contains("absoluta"));
+        assert!(validate_path(dir.join("a.exe").to_str().unwrap(), ExportFormat::Csv)
+            .unwrap_err()
+            .contains(".csv"));
+        assert!(validate_path(dir.join("a.csv").to_str().unwrap(), ExportFormat::Json)
+            .unwrap_err()
+            .contains(".json"));
+        assert!(validate_path(dir.join("sin_extension").to_str().unwrap(), ExportFormat::Sql)
+            .unwrap_err()
+            .contains(".sql"));
+        let missing = dir.join("pgdesk-no-existe-xyz").join("a.csv");
+        assert!(validate_path(missing.to_str().unwrap(), ExportFormat::Csv).unwrap_err().contains("no existe"));
+        let folder_named_like_a_file = dir.join("pgdesk-folder.csv");
+        std::fs::create_dir_all(&folder_named_like_a_file).unwrap();
+        assert!(validate_path(folder_named_like_a_file.to_str().unwrap(), ExportFormat::Csv)
+            .unwrap_err()
+            .contains("carpeta"));
+        let _ = std::fs::remove_dir(&folder_named_like_a_file);
     }
 
     #[test]

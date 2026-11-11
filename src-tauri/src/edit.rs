@@ -571,6 +571,8 @@ mod write_tests {
             ssl_mode: SslMode::Disable,
             read_only,
             production: false,
+            ca_cert_path: None,
+            has_password: false,
         }
     }
 

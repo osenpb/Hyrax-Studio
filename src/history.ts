@@ -7,6 +7,24 @@ export interface HistoryItem {
 
 const MAX_ITEMS = 100;
 
+const ENABLED_KEY = "pgdesk-history-enabled";
+
+export function historyEnabled(): boolean {
+  try {
+    return localStorage.getItem(ENABLED_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function setHistoryEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(ENABLED_KEY, enabled ? "on" : "off");
+  } catch {
+    return;
+  }
+}
+
 const storageKey = (profileId: string) => `pgdesk-history:${profileId}`;
 
 export function loadHistory(profileId: string): HistoryItem[] {

@@ -4,6 +4,7 @@ mod edit;
 mod export;
 mod models;
 mod profiles;
+mod secrets;
 mod sqlscan;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

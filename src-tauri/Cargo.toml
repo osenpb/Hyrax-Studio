@@ -21,6 +21,7 @@ postgres-native-tls = "0.5"
 native-tls = "0.2"
 futures-util = "0.3"
 tauri-plugin-dialog = "2"
+keyring = "4"
 
 [profile.release]
 codegen-units = 1

@@ -12,12 +12,16 @@ use crate::models::*;
 pub const COUNT_CAP: u64 = 100_000;
 pub const TABLE_TIMEOUT_MS: u64 = 60_000;
 pub const COUNT_TIMEOUT_MS: u64 = 300_000;
+pub const PROD_MAX_TIMEOUT_MS: u64 = 300_000;
 
 pub struct Session {
     pub client: Client,
     pub cancel: CancelToken,
     pub ssl: SslMode,
     pub gate: tokio::sync::RwLock<()>,
+    pub production: bool,
+    pub database: String,
+    pub ca_cert_path: Option<String>,
 }
 
 pub fn describe(e: &tokio_postgres::Error) -> String {
@@ -134,12 +138,40 @@ pub fn table_select_sql(
     Ok(sql)
 }
 
-fn tls_connector() -> Result<postgres_native_tls::MakeTlsConnector, String> {
-    let connector = native_tls::TlsConnector::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .map_err(|e| e.to_string())?;
+fn tls_connector(verify: bool, ca_cert_path: Option<&str>) -> Result<postgres_native_tls::MakeTlsConnector, String> {
+    let mut builder = native_tls::TlsConnector::builder();
+    if verify {
+        if let Some(path) = ca_cert_path.filter(|p| !p.trim().is_empty()) {
+            let pem = std::fs::read(path)
+                .map_err(|e| format!("No se pudo leer el certificado de la CA ({path}): {e}"))?;
+            let cert = native_tls::Certificate::from_pem(&pem)
+                .map_err(|e| format!("El certificado de la CA no es un PEM válido: {e}"))?;
+            builder.add_root_certificate(cert);
+        }
+    } else {
+        builder
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true);
+    }
+    let connector = builder.build().map_err(|e| e.to_string())?;
     Ok(postgres_native_tls::MakeTlsConnector::new(connector))
+}
+
+pub fn check_write_unlock(production: bool, database: &str, confirm: Option<&str>) -> Result<(), String> {
+    if production && confirm != Some(database) {
+        return Err(format!(
+            "Esta es una conexión de producción: para habilitar la escritura hay que confirmar escribiendo el nombre de la base de datos ({database})."
+        ));
+    }
+    Ok(())
+}
+
+pub fn effective_timeout(session: &Session, requested_ms: u64) -> u64 {
+    if session.production && (requested_ms == 0 || requested_ms > PROD_MAX_TIMEOUT_MS) {
+        PROD_MAX_TIMEOUT_MS
+    } else {
+        requested_ms
+    }
 }
 
 pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
@@ -152,6 +184,16 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
         .connect_timeout(Duration::from_secs(10))
         .application_name("PgDesk");
 
+    let make = |client: Client| Session {
+        cancel: client.cancel_token(),
+        client,
+        ssl: profile.ssl_mode,
+        gate: tokio::sync::RwLock::new(()),
+        production: profile.production,
+        database: profile.database.clone(),
+        ca_cert_path: profile.ca_cert_path.clone(),
+    };
+
     let session = match profile.ssl_mode {
         SslMode::Disable => {
             cfg.ssl_mode(PgSslMode::Disable);
@@ -159,25 +201,17 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
             tokio::spawn(async move {
                 let _ = connection.await;
             });
-            Session {
-                cancel: client.cancel_token(),
-                client,
-                ssl: SslMode::Disable,
-                gate: tokio::sync::RwLock::new(()),
-            }
+            make(client)
         }
-        SslMode::Require => {
+        SslMode::Require | SslMode::Verify => {
             cfg.ssl_mode(PgSslMode::Require);
-            let (client, connection) = cfg.connect(tls_connector()?).await.map_err(err)?;
+            let verify = profile.ssl_mode == SslMode::Verify;
+            let tls = tls_connector(verify, profile.ca_cert_path.as_deref())?;
+            let (client, connection) = cfg.connect(tls).await.map_err(err)?;
             tokio::spawn(async move {
                 let _ = connection.await;
             });
-            Session {
-                cancel: client.cancel_token(),
-                client,
-                ssl: SslMode::Require,
-                gate: tokio::sync::RwLock::new(()),
-            }
+            make(client)
         }
     };
 
@@ -192,7 +226,12 @@ pub async fn cancel(session: &Session) -> Result<(), String> {
         SslMode::Disable => session.cancel.cancel_query(NoTls).await.map_err(err),
         SslMode::Require => session
             .cancel
-            .cancel_query(tls_connector()?)
+            .cancel_query(tls_connector(false, None)?)
+            .await
+            .map_err(err),
+        SslMode::Verify => session
+            .cancel
+            .cancel_query(tls_connector(true, session.ca_cert_path.as_deref())?)
             .await
             .map_err(err),
     }
@@ -525,6 +564,8 @@ mod tests {
             ssl_mode: SslMode::Disable,
             read_only,
             production: false,
+            ca_cert_path: None,
+            has_password: false,
         })
     }
 
@@ -532,6 +573,34 @@ mod tests {
     fn quotes_identifiers_with_embedded_quotes() {
         assert_eq!(quote_ident("a\"b"), "\"a\"\"b\"");
         assert_eq!(quote_ident("plain"), "\"plain\"");
+    }
+
+    #[test]
+    fn production_writes_need_the_exact_database_name() {
+        assert!(check_write_unlock(false, "erp", None).is_ok());
+        assert!(check_write_unlock(false, "erp", Some("lo-que-sea")).is_ok());
+        assert!(check_write_unlock(true, "erp", Some("erp")).is_ok());
+        let missing = check_write_unlock(true, "erp", None).unwrap_err();
+        assert!(missing.contains("producción") && missing.contains("erp"), "{missing}");
+        assert!(check_write_unlock(true, "erp", Some("")).is_err());
+        assert!(check_write_unlock(true, "erp", Some("ERP")).is_err());
+        assert!(check_write_unlock(true, "erp", Some("erp ")).is_err());
+    }
+
+    #[test]
+    fn certificate_verification_reports_unreadable_or_invalid_ca_files() {
+        let missing = tls_connector(true, Some("C:\\no\\existe\\ca.pem")).err().unwrap();
+        assert!(missing.contains("No se pudo leer el certificado"), "{missing}");
+
+        let bogus = std::env::temp_dir().join(format!("pgdesk-bogus-ca-{}.pem", std::process::id()));
+        std::fs::write(&bogus, "esto no es un certificado").unwrap();
+        let invalid = tls_connector(true, Some(bogus.to_str().unwrap())).err().unwrap();
+        assert!(invalid.contains("PEM"), "{invalid}");
+        let _ = std::fs::remove_file(&bogus);
+
+        assert!(tls_connector(true, None).is_ok());
+        assert!(tls_connector(true, Some("  ")).is_ok());
+        assert!(tls_connector(false, None).is_ok());
     }
 
     #[tokio::test]
@@ -626,6 +695,73 @@ mod tests {
 
         let ok = run_sql(&session, "SELECT 1", 10, 0).await.unwrap();
         assert_eq!(ok.results[0].rows[0][0].as_deref(), Some("1"));
+    }
+
+    fn tls_profile(mode: SslMode, ca: Option<String>) -> ConnectionProfile {
+        let var = |name: &str| std::env::var(name).expect("faltan variables PGDESK_WRITE_TEST_*");
+        ConnectionProfile {
+            id: "tls".into(),
+            name: "tls".into(),
+            host: var("PGDESK_WRITE_TEST_HOST"),
+            port: var("PGDESK_WRITE_TEST_PORT").parse().unwrap(),
+            database: var("PGDESK_WRITE_TEST_DB"),
+            user: var("PGDESK_WRITE_TEST_USER"),
+            password: var("PGDESK_WRITE_TEST_PASSWORD"),
+            ssl_mode: mode,
+            read_only: true,
+            production: false,
+            ca_cert_path: ca,
+            has_password: false,
+        }
+    }
+
+    async fn uses_tls(session: &Session) -> bool {
+        let out = run_sql(
+            session,
+            "SELECT ssl::text FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+            10,
+            0,
+        )
+        .await
+        .unwrap();
+        out.results[0].rows[0][0].as_deref() == Some("true")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn tls_modes_encrypt_and_verification_checks_the_certificate() {
+        let ca = std::env::var("PGDESK_TLS_CA_PATH").expect("falta PGDESK_TLS_CA_PATH");
+
+        let plain = connect(&tls_profile(SslMode::Disable, None)).await.unwrap();
+        assert!(!uses_tls(&plain).await);
+
+        let required = connect(&tls_profile(SslMode::Require, None)).await.unwrap();
+        assert!(uses_tls(&required).await);
+
+        let untrusted = connect(&tls_profile(SslMode::Verify, None)).await.err().unwrap();
+        println!("sin CA: {untrusted}");
+
+        let verified = connect(&tls_profile(SslMode::Verify, Some(ca.clone()))).await.unwrap();
+        assert!(uses_tls(&verified).await);
+
+        let mut wrong_host = tls_profile(SslMode::Verify, Some(ca));
+        wrong_host.host = "localhost".into();
+        let by_name = connect(&wrong_host).await.unwrap();
+        assert!(uses_tls(&by_name).await);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn cancelling_works_on_a_verified_tls_session() {
+        let ca = std::env::var("PGDESK_TLS_CA_PATH").expect("falta PGDESK_TLS_CA_PATH");
+        let session = Arc::new(connect(&tls_profile(SslMode::Verify, Some(ca))).await.unwrap());
+        let runner = session.clone();
+        let handle = tokio::spawn(async move { run_sql(&runner, "SELECT pg_sleep(30)", 10, 0).await });
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        cancel(&session).await.unwrap();
+        assert_eq!(handle.await.unwrap().unwrap_err(), "Consulta cancelada.");
+        assert!(uses_tls(&session).await);
     }
 
     #[tokio::test]

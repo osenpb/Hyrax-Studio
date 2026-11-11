@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use crate::db::Session;
 use crate::models::*;
 use crate::edit::{self, ApplyResult, ChangeSet};
-use crate::{db, export, profiles};
+use crate::{db, export, profiles, secrets};
 
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
@@ -36,11 +36,37 @@ async fn drop_profile_sessions(state: &State<'_, Sessions>, profile_id: &str) {
 
 #[tauri::command]
 pub fn list_profiles(app: AppHandle) -> Result<Vec<ConnectionProfile>, String> {
-    profiles::load(&config_dir(&app)?)
+    let dir = config_dir(&app)?;
+    let mut list = profiles::load(&dir)?;
+    let mut migrated = false;
+    for profile in list.iter_mut() {
+        if !profile.password.is_empty() {
+            secrets::set(&profile.id, &profile.password)?;
+            if secrets::get(&profile.id)?.as_deref() != Some(profile.password.as_str()) {
+                return Err(
+                    "No se pudo verificar que la contraseña quedó guardada en el almacén del sistema; el archivo de conexiones no se modificó."
+                        .to_string(),
+                );
+            }
+            migrated = true;
+        }
+        profile.has_password = secrets::get(&profile.id).ok().flatten().is_some();
+        profile.password.clear();
+    }
+    if migrated {
+        profiles::store(&dir, &list)?;
+    }
+    Ok(list)
 }
 
 #[tauri::command]
 pub fn save_profile(app: AppHandle, profile: ConnectionProfile) -> Result<(), String> {
+    let mut profile = profile;
+    if !profile.password.is_empty() {
+        secrets::set(&profile.id, &profile.password)?;
+    }
+    profile.password.clear();
+    profile.has_password = false;
     profiles::save(&config_dir(&app)?, profile)
 }
 
@@ -51,11 +77,16 @@ pub async fn delete_profile(
     id: String,
 ) -> Result<(), String> {
     drop_profile_sessions(&state, &id).await;
+    secrets::delete(&id)?;
     profiles::delete(&config_dir(&app)?, &id)
 }
 
 #[tauri::command]
 pub async fn test_connection(profile: ConnectionProfile) -> Result<String, String> {
+    let mut profile = profile;
+    if profile.password.is_empty() {
+        profile.password = secrets::get(&profile.id)?.unwrap_or_default();
+    }
     let session = db::connect(&profile).await?;
     db::server_version(&session.client).await
 }
@@ -68,6 +99,9 @@ pub async fn connect_profile(
     database: String,
 ) -> Result<ConnectInfo, String> {
     let mut profile = profiles::find(&config_dir(&app)?, &id)?;
+    if profile.password.is_empty() {
+        profile.password = secrets::get(&id)?.unwrap_or_default();
+    }
     profile.database = database.clone();
     let session = db::connect(&profile).await?;
     let version = db::server_version(&session.client).await?;
@@ -97,8 +131,12 @@ pub async fn set_read_only(
     state: State<'_, Sessions>,
     id: String,
     enabled: bool,
+    confirm: Option<String>,
 ) -> Result<bool, String> {
     let session = session(&state, &id).await?;
+    if !enabled {
+        db::check_write_unlock(session.production, &session.database, confirm.as_deref())?;
+    }
     db::set_read_only(&session.client, enabled).await?;
     db::is_read_only(&session.client).await
 }
@@ -205,6 +243,7 @@ pub async fn run_sql(
 ) -> Result<QueryOutput, String> {
     let session = session(&state, &id).await?;
     let _gate = session.gate.read().await;
+    let timeout_ms = db::effective_timeout(&session, timeout_ms);
     db::run_sql(&session, &sql, limit.clamp(1, 10000) as usize, timeout_ms).await
 }
 
@@ -278,5 +317,6 @@ pub async fn run_sql_dry(
 ) -> Result<QueryOutput, String> {
     let session = session(&state, &id).await?;
     let _gate = session.gate.write().await;
+    let timeout_ms = db::effective_timeout(&session, timeout_ms);
     db::run_sql_dry(&session, &sql, limit.clamp(1, 10000) as usize, timeout_ms).await
 }

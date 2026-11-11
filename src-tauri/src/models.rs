@@ -6,6 +6,7 @@ pub enum SslMode {
     #[default]
     Disable,
     Require,
+    Verify,
 }
 
 fn default_read_only() -> bool {
@@ -21,6 +22,7 @@ pub struct ConnectionProfile {
     pub port: u16,
     pub database: String,
     pub user: String,
+    #[serde(default)]
     pub password: String,
     #[serde(default)]
     pub ssl_mode: SslMode,
@@ -28,6 +30,10 @@ pub struct ConnectionProfile {
     pub read_only: bool,
     #[serde(default)]
     pub production: bool,
+    #[serde(default)]
+    pub ca_cert_path: Option<String>,
+    #[serde(default)]
+    pub has_password: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

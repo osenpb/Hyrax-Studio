@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type SslMode = "disable" | "require";
+export type SslMode = "disable" | "require" | "verify";
 
 export interface ConnectionProfile {
   id: string;
@@ -13,6 +13,8 @@ export interface ConnectionProfile {
   sslMode: SslMode;
   readOnly: boolean;
   production: boolean;
+  caCertPath: string | null;
+  hasPassword: boolean;
 }
 
 export interface SessionInfo {
@@ -130,7 +132,8 @@ export const api = {
   testConnection: (profile: ConnectionProfile) => invoke<string>("test_connection", { profile }),
   connect: (id: string, database: string) =>
     invoke<SessionInfo>("connect_profile", { id, database }),
-  setReadOnly: (id: string, enabled: boolean) => invoke<boolean>("set_read_only", { id, enabled }),
+  setReadOnly: (id: string, enabled: boolean, confirm?: string) =>
+    invoke<boolean>("set_read_only", { id, enabled, confirm: confirm ?? null }),
   cancelQuery: (id: string) => invoke<void>("cancel_query", { id }),
   disconnect: (id: string) => invoke<void>("disconnect", { id }),
   disconnectProfile: (id: string) => invoke<void>("disconnect_profile", { id }),

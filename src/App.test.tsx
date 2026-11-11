@@ -19,7 +19,7 @@ const profile = {
   port: 5432,
   database: "postgres",
   user: "u",
-  password: "x",
+  password: "",
   sslMode: "disable",
   readOnly: true,
   production: false,
@@ -34,7 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     calls.push({ cmd, args });
     switch (cmd) {
       case "list_profiles":
-        return [{ ...profile, production: productionProfile }];
+        return [{ ...profile, production: productionProfile, hasPassword: true, caCertPath: null }];
       case "connect_profile":
         return { version: "PostgreSQL 16", readOnly: readOnlyState };
       case "set_read_only":
@@ -62,6 +62,9 @@ vi.mock("@tauri-apps/api/core", () => ({
         return { rows: 3 };
       case "export_sql":
         return { rows: 1 };
+      case "save_profile":
+      case "delete_profile":
+        return;
       case "completion_schema":
         return [{ schema: "public", table: "orders", columns: ["id", "total"] }];
       case "run_sql": {
@@ -480,6 +483,22 @@ describe("rejilla de datos", () => {
     await waitFor(() => expect(lastOrder()).toEqual([{ column: "meta", descending: false }]));
   });
 
+  it("sin orden elegido ordena por clave primaria y pide la tabla una sola vez", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openOrdersTab(user);
+    await new Promise((r) => setTimeout(r, 100));
+
+    const requests = calls.filter((c) => c.cmd === "table_data");
+    expect(requests).toHaveLength(1);
+    expect(requests[0].args.order).toEqual([{ column: "id", descending: false }]);
+
+    await user.click(screen.getByText("total", { selector: "th" }));
+    await user.click(screen.getByText("total", { selector: "th" }));
+    await user.click(screen.getByText("total", { selector: "th" }));
+    await waitFor(() => expect(lastOrder()).toEqual([{ column: "id", descending: false }]));
+  });
+
   it("selecciona filas y las copia como TSV", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -758,6 +777,7 @@ describe("seguridad en producción y en el editor SQL", () => {
 
     await user.click(confirm);
     await waitFor(() => expect(calls.find((c) => c.cmd === "set_read_only")?.args.enabled).toBe(false));
+    expect(calls.find((c) => c.cmd === "set_read_only")?.args.confirm).toBe("postgres");
   });
 
   async function loadDangerousStatement(user: ReturnType<typeof userEvent.setup>) {
@@ -829,10 +849,105 @@ describe("seguridad en producción y en el editor SQL", () => {
       await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 100);
       await waitFor(() => expect(calls.filter((c) => c.cmd === "set_read_only")).toHaveLength(2));
       expect(calls.filter((c) => c.cmd === "set_read_only")[1].args.enabled).toBe(true);
+      expect(calls.filter((c) => c.cmd === "set_read_only")[0].args.confirm).toBeNull();
       expect(await screen.findByText(/se desactivó sola tras 10 minutos/)).toBeTruthy();
       expect(await screen.findByText("Solo lectura")).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("credenciales, TLS e historial", () => {
+  async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByText("dev_erp");
+    await user.click(screen.getAllByTitle("Editar")[0]);
+    await screen.findByText("Editar conexión");
+  }
+
+  it("la contraseña guardada nunca se muestra: solo se indica que existe y vacío la conserva", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditDialog(user);
+
+    const password = screen.getByPlaceholderText("Guardada en el sistema (vacío = conservar)") as HTMLInputElement;
+    expect(password.value).toBe("");
+    expect(document.body.innerHTML).not.toContain('value="x"');
+
+    await user.click(screen.getByText("Guardar"));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_profile")).toBe(true));
+    const saved = calls.find((c) => c.cmd === "save_profile")?.args.profile as Record<string, unknown>;
+    expect(saved.password).toBe("");
+  });
+
+  it("al verificar el certificado aparece el campo de la CA y al no verificar, un aviso", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditDialog(user);
+
+    expect(screen.queryByLabelText(/Certificado de la CA/)).toBeNull();
+    await user.selectOptions(screen.getByLabelText("SSL"), "require");
+    expect(await screen.findByText(/un intermediario podría suplantar/)).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText("SSL"), "verify");
+    const ca = await screen.findByLabelText(/Certificado de la CA/);
+    expect(screen.queryByText(/un intermediario podría suplantar/)).toBeNull();
+    await user.type(ca, "C:/certs/ca.pem");
+
+    await user.click(screen.getByText("Guardar"));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_profile")).toBe(true));
+    const saved = calls.find((c) => c.cmd === "save_profile")?.args.profile as Record<string, unknown>;
+    expect(saved.sslMode).toBe("verify");
+    expect(saved.caCertPath).toBe("C:/certs/ca.pem");
+  });
+
+  async function openSqlEditor(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByText("dev_erp"));
+    await screen.findByText("erp_db");
+    await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
+  }
+
+  it("se puede desactivar el historial y entonces no se guarda nada", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openSqlEditor(user);
+
+    await user.click(await screen.findByText("Historial"));
+    await user.click(screen.getByLabelText("Guardar historial"));
+    await user.click(screen.getByText("Ejecutar"));
+    await screen.findByText("Ejecutar");
+    await waitFor(() => expect(calls.some((c) => c.cmd === "run_sql")).toBe(true));
+    expect(screen.queryByText(/Historial \(\d+\)/)).toBeNull();
+    expect(localStorage.getItem("pgdesk-history:p1")).toBeNull();
+    expect(localStorage.getItem("pgdesk-history-enabled")).toBe("off");
+  });
+
+  it("en producción el límite de tiempo no ofrece la opción sin límite", async () => {
+    productionProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await openSqlEditor(user);
+    await screen.findByText("Límite");
+    expect(screen.queryByRole("option", { name: "Sin límite" })).toBeNull();
+    expect(screen.getByRole("option", { name: "5 min" })).toBeTruthy();
+  });
+
+  it("fuera de producción sí existe la opción sin límite", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openSqlEditor(user);
+    expect(await screen.findByRole("option", { name: "Sin límite" })).toBeTruthy();
+  });
+
+  it("eliminar una conexión borra también su historial local", async () => {
+    localStorage.setItem("pgdesk-history:p1", JSON.stringify([{ sql: "SELECT 42", at: 1, ms: 1, ok: true }]));
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("dev_erp");
+    await user.click(screen.getAllByTitle("Eliminar")[0]);
+    await user.click(await screen.findByText("Eliminar", { selector: "button.danger" }));
+
+    await waitFor(() => expect(calls.some((c) => c.cmd === "delete_profile")).toBe(true));
+    await waitFor(() => expect(localStorage.getItem("pgdesk-history:p1")).toBeNull());
   });
 });
