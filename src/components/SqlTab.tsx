@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { format as formatSql } from "sql-formatter";
-import { api, errorText, profileOfSession, type ExportFormat, type QueryOutput } from "../api";
+import { api, databaseOfSession, errorText, profileOfSession, type ExportFormat, type QueryOutput } from "../api";
+import { findDangers, type Danger } from "../sqlscan";
 import { askExportPath } from "../exporting";
 import { addHistory, clearHistory, loadHistory, type HistoryItem } from "../history";
 import ResultGrid from "./ResultGrid";
 import ExportMenu from "./ExportMenu";
+import ModeChip from "./ModeChip";
 import SqlEditor, { type SqlEditorHandle } from "./SqlEditor";
 import Icon from "./Icon";
 
@@ -12,6 +14,7 @@ interface Props {
   connId: string;
   connName: string;
   readOnly: boolean;
+  production: boolean;
   onSetReadOnly: (enabled: boolean) => Promise<void>;
 }
 
@@ -26,7 +29,7 @@ const TIMEOUTS = [
 
 const stripTrailing = (text: string) => text.trim().replace(/;+\s*$/, "");
 
-export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Props) {
+export default function SqlTab({ connId, connName, readOnly, production, onSetReadOnly }: Props) {
   const profileId = profileOfSession(connId);
   const editor = useRef<SqlEditorHandle>(null);
   const [output, setOutput] = useState<QueryOutput | null>(null);
@@ -35,7 +38,8 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [timeoutMs, setTimeoutMs] = useState(60000);
-  const [confirming, setConfirming] = useState(false);
+  const [danger, setDanger] = useState<{ text: string; dangers: Danger[] } | null>(null);
+  const [dry, setDry] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -70,14 +74,17 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
     };
   }, [connId]);
 
-  const execute = async (text: string, record: boolean) => {
+  const execute = async (text: string, record: boolean, dryRun = false) => {
     if (!text.trim() || running) return;
     setRunning(true);
     setError(null);
+    setDry(dryRun);
     let ok = false;
     let ms: number | null = null;
     try {
-      const out = await api.runSql(connId, text, ROW_LIMIT, timeoutMs);
+      const out = dryRun
+        ? await api.runSqlDry(connId, text, ROW_LIMIT, timeoutMs)
+        : await api.runSql(connId, text, ROW_LIMIT, timeoutMs);
       setOutput(out);
       setActive(0);
       ok = true;
@@ -91,7 +98,19 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
     }
   };
 
-  const run = () => execute(editor.current?.getRunnable() ?? "", true);
+  const run = () => {
+    const text = editor.current?.getRunnable() ?? "";
+    if (!readOnly) {
+      const dangers = findDangers(text);
+      if (dangers.length > 0) {
+        setDanger({ text, dangers });
+        return Promise.resolve();
+      }
+    }
+    return execute(text, true);
+  };
+
+  const dryRun = () => execute(editor.current?.getRunnable() ?? "", false, true);
 
   const explain = (analyze: boolean) => {
     const text = stripTrailing(editor.current?.getRunnable() ?? "");
@@ -135,15 +154,6 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
     api.cancelQuery(connId).catch(() => undefined);
   };
 
-  const changeMode = async (enabled: boolean) => {
-    setConfirming(false);
-    try {
-      await onSetReadOnly(enabled);
-    } catch (e) {
-      setError(errorText(e));
-    }
-  };
-
   const pick = (item: HistoryItem) => {
     editor.current?.setText(item.sql);
     setHistoryOpen(false);
@@ -155,7 +165,7 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
   const isPlan = current?.columns.length === 1 && current.columns[0] === "QUERY PLAN";
 
   return (
-    <div className="tab-body">
+    <div className={"tab-body" + (production ? " is-prod" : "")}>
       <div className="toolbar wrap">
         {running ? (
           <button className="danger" onClick={cancel}>
@@ -201,31 +211,70 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
             ))}
           </select>
         </label>
-        <button
-          className={"chip " + (readOnly ? "chip-ok" : "chip-warn")}
-          onClick={() => (readOnly ? setConfirming(true) : void changeMode(true))}
-          title={readOnly ? "Clic para habilitar escritura" : "Clic para volver a solo lectura"}
-        >
-          <Icon name={readOnly ? "lock" : "unlock"} size={13} />
-          {readOnly ? "Solo lectura" : "Escritura habilitada"}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => void dryRun()}
+            disabled={running}
+            title="Ejecuta la consulta dentro de una transacción y la revierte (ROLLBACK): ves el efecto sin guardar nada"
+          >
+            Probar (ROLLBACK)
+          </button>
+        )}
+        <ModeChip
+          readOnly={readOnly}
+          production={production}
+          database={databaseOfSession(connId)}
+          onSet={onSetReadOnly}
+          onError={setError}
+        />
         <span className="spacer" />
         <span className="chip chip-plain">
           <Icon name="database" size={13} /> {connName}
         </span>
       </div>
 
-      {confirming && (
-        <div className="alert alert-warn confirm-bar">
-          <Icon name="alert" size={15} />
-          <span>
-            Vas a permitir escrituras en <strong>{connName}</strong>. Los cambios se confirman al instante y no se
-            pueden deshacer.
-          </span>
-          <button className="danger" onClick={() => void changeMode(false)}>
-            Habilitar escritura
-          </button>
-          <button onClick={() => setConfirming(false)}>Cancelar</button>
+      {danger && (
+        <div className="modal-backdrop" onMouseDown={() => setDanger(null)}>
+          <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
+            <h2>Sentencia peligrosa</h2>
+            <p>
+              La escritura está habilitada en <strong>{connName}</strong>. Esta ejecución incluye:
+            </p>
+            <ul className="danger-list">
+              {danger.dangers.map((d, i) => (
+                <li key={i}>
+                  <strong>{d.label}</strong>
+                  <code>{d.statement}</code>
+                </li>
+              ))}
+            </ul>
+            <p className="muted">
+              Puedes probarla primero con ROLLBACK para ver cuántas filas afectaría sin guardar nada.
+            </p>
+            <div className="modal-actions">
+              <button onClick={() => setDanger(null)}>Cancelar</button>
+              <span className="spacer" />
+              <button
+                onClick={() => {
+                  const text = danger.text;
+                  setDanger(null);
+                  void execute(text, false, true);
+                }}
+              >
+                Probar con ROLLBACK
+              </button>
+              <button
+                className="danger"
+                onClick={() => {
+                  const text = danger.text;
+                  setDanger(null);
+                  void execute(text, true);
+                }}
+              >
+                Ejecutar de todos modos
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -281,6 +330,13 @@ export default function SqlTab({ connId, connName, readOnly, onSetReadOnly }: Pr
         <div className={"alert " + (soft ? "alert-warn" : "alert-error")}>
           <Icon name="alert" size={15} />
           <span>{error}</span>
+        </div>
+      )}
+
+      {output && dry && (
+        <div className="alert alert-ok">
+          <Icon name="lock" size={15} />
+          <span>Ensayo: se ejecutó dentro de una transacción y se revirtió (ROLLBACK). No se guardó ningún cambio.</span>
         </div>
       )}
 

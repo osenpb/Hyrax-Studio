@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { ResultSet, SortKey } from "../api";
+import type { InsertValue, ResultSet, SortKey } from "../api";
 import { copyText, toJsonRows, toTsv, tryParseJson } from "../clipboard";
 import Icon from "./Icon";
+
+export interface GridEdit {
+  enabled: boolean;
+  pkColumns: string[];
+  rowKey: (row: (string | null)[]) => string;
+  updates: Record<string, { set: Record<string, string | null> }>;
+  deletedKeys: Set<string>;
+  onEditCell: (rowIndex: number, colIndex: number, value: string | null) => void;
+  inserts: { id: number; values: Record<string, InsertValue> }[];
+  onEditInsert: (id: number, column: string, cell: InsertValue) => void;
+  onRemoveInsert: (id: number) => void;
+}
 
 interface Props {
   result: ResultSet;
@@ -11,17 +23,88 @@ interface Props {
   filters?: Record<string, string>;
   onFilterChange?: (column: string, value: string) => void;
   selectionActions?: (rows: number[]) => ReactNode;
+  edit?: GridEdit;
 }
 
 const NUMERIC = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
 
-function cellClass(value: string | null, selected: boolean): string {
+function cellClass(value: string | null, selected: boolean, dirty: boolean): string {
   const classes: string[] = [];
   if (value === null) classes.push("null");
   else if (NUMERIC.test(value)) classes.push("num");
   else if (value === "t" || value === "f" || value === "true" || value === "false") classes.push("bool");
   if (selected) classes.push("selected");
+  if (dirty) classes.push("dirty");
   return classes.join(" ");
+}
+
+function CellEditor(props: {
+  initial: string | null;
+  onCommit: (value: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(props.initial ?? "");
+  const done = useRef(false);
+
+  const finish = (value: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    props.onCommit(props.initial === null && value === "" ? null : value);
+  };
+
+  return (
+    <div className="cell-editor">
+      <input
+        autoFocus
+        aria-label="Editar celda"
+        value={text}
+        placeholder={props.initial === null ? "NULL" : ""}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") finish(text);
+          else if (e.key === "Escape") {
+            done.current = true;
+            props.onCancel();
+          }
+        }}
+        onBlur={() => finish(text)}
+      />
+      <button
+        className="small"
+        title="Guardar NULL"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => finish(null)}
+      >
+        NULL
+      </button>
+    </div>
+  );
+}
+
+function InsertCell(props: { value: InsertValue | undefined; column: string; onChange: (cell: InsertValue) => void }) {
+  const v = props.value ?? { mode: "default" as const };
+  return (
+    <td className={"insert-cell" + (v.mode === "null" ? " null" : "")}>
+      <div className="cell-editor">
+        <input
+          aria-label={`Nuevo ${props.column}`}
+          value={v.mode === "value" ? v.value : ""}
+          disabled={v.mode === "null"}
+          placeholder={v.mode === "null" ? "NULL" : "DEFAULT"}
+          onChange={(e) =>
+            props.onChange(e.target.value === "" ? { mode: "default" } : { mode: "value", value: e.target.value })
+          }
+        />
+        <button
+          className="small ghost"
+          title={v.mode === "null" ? "Quitar NULL (usar DEFAULT)" : "Poner NULL"}
+          onClick={() => props.onChange(v.mode === "null" ? { mode: "default" } : { mode: "null" })}
+        >
+          ∅
+        </button>
+      </div>
+    </td>
+  );
 }
 
 export default function ResultGrid({
@@ -32,18 +115,21 @@ export default function ResultGrid({
   filters,
   onFilterChange,
   selectionActions,
+  edit,
 }: Props) {
   const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
   const [rows, setRows] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
   const [jsonRaw, setJsonRaw] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ row: number; col: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     setRows(new Set());
     setAnchor(null);
     setSelected(null);
+    setEditing(null);
   }, [result]);
 
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -114,6 +200,8 @@ export default function ResultGrid({
     );
   }
 
+  const pkSet = new Set(edit?.pkColumns ?? []);
+
   return (
     <div className="grid-wrap" tabIndex={0} onKeyDown={onKeyDown}>
       {rows.size > 0 && (
@@ -151,6 +239,7 @@ export default function ResultGrid({
                     onClick={onSort ? (e) => onSort(name, e.shiftKey) : undefined}
                   >
                     {name}
+                    {pkSet.has(name) && <Icon name="key" size={11} className="ic-pk pk-mark" />}
                     {key && (
                       <span className="sort">
                         {key.descending ? " ▼" : " ▲"}
@@ -181,29 +270,81 @@ export default function ResultGrid({
             )}
           </thead>
           <tbody>
-            {result.rows.map((row, r) => (
-              <tr key={r} className={rows.has(r) ? "row-selected" : undefined}>
-                <td
-                  className="rownum selectable"
-                  title="Clic: seleccionar fila · Ctrl+clic: añadir · Mayús+clic: rango"
-                  onClick={(e) => selectRow(r, e)}
-                >
-                  {(rowOffset + r + 1).toLocaleString()}
-                </td>
-                {row.map((value, c) => (
-                  <td
-                    key={c}
-                    className={cellClass(value, selected?.row === r && selected.col === c)}
-                    onClick={() => setSelected({ row: r, col: c })}
+            {edit?.inserts.map((draft) => (
+              <tr key={`insert-${draft.id}`} className="row-insert">
+                <td className="rownum">
+                  <button
+                    className="ghost icon-btn"
+                    title="Quitar fila nueva"
+                    onClick={() => edit.onRemoveInsert(draft.id)}
+                    disabled={!edit.enabled}
                   >
-                    {value === null ? "NULL" : value}
-                  </td>
+                    <Icon name="close" size={11} />
+                  </button>
+                </td>
+                {result.columns.map((name) => (
+                  <InsertCell
+                    key={name}
+                    column={name}
+                    value={draft.values[name]}
+                    onChange={(cellValue) => edit.onEditInsert(draft.id, name, cellValue)}
+                  />
                 ))}
               </tr>
             ))}
+            {result.rows.map((row, r) => {
+              const key = edit ? edit.rowKey(row) : "";
+              const update = edit?.updates[key];
+              const deleted = edit?.deletedKeys.has(key) ?? false;
+              return (
+                <tr
+                  key={r}
+                  className={(rows.has(r) ? "row-selected " : "") + (deleted ? "row-deleted" : "")}
+                >
+                  <td
+                    className="rownum selectable"
+                    title="Clic: seleccionar fila · Ctrl+clic: añadir · Mayús+clic: rango"
+                    onClick={(e) => selectRow(r, e)}
+                  >
+                    {(rowOffset + r + 1).toLocaleString()}
+                  </td>
+                  {row.map((value, c) => {
+                    const name = result.columns[c];
+                    const dirty = update !== undefined && name in update.set;
+                    const shown = dirty ? update.set[name] : value;
+                    if (editing?.row === r && editing.col === c) {
+                      return (
+                        <td key={c} className="editing">
+                          <CellEditor
+                            initial={shown}
+                            onCancel={() => setEditing(null)}
+                            onCommit={(next) => {
+                              setEditing(null);
+                              edit?.onEditCell(r, c, next);
+                            }}
+                          />
+                        </td>
+                      );
+                    }
+                    return (
+                      <td
+                        key={c}
+                        className={cellClass(shown, selected?.row === r && selected.col === c, dirty)}
+                        onClick={() => setSelected({ row: r, col: c })}
+                        onDoubleClick={() => {
+                          if (edit?.enabled && !deleted && !pkSet.has(name)) setEditing({ row: r, col: c });
+                        }}
+                      >
+                        {shown === null ? "NULL" : shown}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        {result.rows.length === 0 && <div className="grid-empty">Sin filas</div>}
+        {result.rows.length === 0 && !edit?.inserts.length && <div className="grid-empty">Sin filas</div>}
       </div>
       {selected && (
         <div className="inspector">

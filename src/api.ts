@@ -12,6 +12,7 @@ export interface ConnectionProfile {
   password: string;
   sslMode: SslMode;
   readOnly: boolean;
+  production: boolean;
 }
 
 export interface SessionInfo {
@@ -77,6 +78,34 @@ export interface SortKey {
   descending: boolean;
 }
 
+export interface RowUpdate {
+  pk: Record<string, string>;
+  original: Record<string, string | null>;
+  set: Record<string, string | null>;
+}
+
+export interface RowDelete {
+  pk: Record<string, string>;
+}
+
+export type InsertValue = { mode: "default" } | { mode: "null" } | { mode: "value"; value: string };
+
+export interface RowInsert {
+  values: Record<string, InsertValue>;
+}
+
+export interface ChangeSet {
+  updates: RowUpdate[];
+  deletes: RowDelete[];
+  inserts: RowInsert[];
+}
+
+export interface ApplyResult {
+  updated: number;
+  deleted: number;
+  inserted: number;
+}
+
 export type ExportFormat = "csv" | "json" | "sql";
 
 export interface ExportResult {
@@ -132,6 +161,12 @@ export const api = {
     format: ExportFormat,
     path: string,
   ) => invoke<ExportResult>("export_table", { id, schema, table, filters, order, format, path }),
+  previewChanges: (id: string, schema: string, table: string, changes: ChangeSet) =>
+    invoke<string[]>("preview_changes", { id, schema, table, changes }),
+  applyChanges: (id: string, schema: string, table: string, changes: ChangeSet) =>
+    invoke<ApplyResult>("apply_changes", { id, schema, table, changes }),
+  runSqlDry: (id: string, sql: string, limit: number, timeoutMs: number) =>
+    invoke<QueryOutput>("run_sql_dry", { id, sql, limit, timeoutMs }),
   exportSql: (id: string, sql: string, format: ExportFormat, path: string) =>
     invoke<ExportResult>("export_sql", { id, sql, format, path }),
   runSql: (id: string, sql: string, limit: number, timeoutMs: number) =>

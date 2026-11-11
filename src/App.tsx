@@ -22,6 +22,8 @@ interface Tab {
   table?: string;
 }
 
+const WRITE_WINDOW_MS = 10 * 60 * 1000;
+
 type Theme = "auto" | "light" | "dark";
 
 function loadTheme(): Theme {
@@ -57,6 +59,8 @@ export default function App() {
     }
   }, [theme]);
 
+  const sessionTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
   const reloadProfiles = useCallback(async () => {
     try {
       setProfiles(await api.listProfiles());
@@ -68,6 +72,8 @@ export default function App() {
   useEffect(() => {
     void reloadProfiles();
   }, [reloadProfiles]);
+
+  const isProduction = (key: string) => profiles.find((p) => p.id === profileOfSession(key))?.production ?? false;
 
   const nameOf = (key: string) => {
     const profile = profiles.find((p) => p.id === profileOfSession(key));
@@ -90,6 +96,30 @@ export default function App() {
     const readOnly = await api.setReadOnly(key, enabled);
     setConnected((prev) => (key in prev ? { ...prev, [key]: { ...prev[key], readOnly } } : prev));
   };
+
+  useEffect(() => {
+    const timers = sessionTimers.current;
+    for (const key of Object.keys(timers)) {
+      if (!(key in connected) || connected[key].readOnly) {
+        clearTimeout(timers[key]);
+        delete timers[key];
+      }
+    }
+    for (const [key, info] of Object.entries(connected)) {
+      if (!info.readOnly && !(key in timers)) {
+        timers[key] = setTimeout(() => {
+          delete timers[key];
+          api
+            .setReadOnly(key, true)
+            .then((readOnly) => {
+              setConnected((prev) => (key in prev ? { ...prev, [key]: { ...prev[key], readOnly } } : prev));
+              setBanner(`La escritura se desactivó sola tras 10 minutos en ${nameOf(key)}. La sesión volvió a solo lectura.`);
+            })
+            .catch(() => undefined);
+        }, WRITE_WINDOW_MS);
+      }
+    }
+  }, [connected]);
 
   const closeTabsOf = (profileId: string) => {
     setTabs((prev) => prev.filter((t) => profileOfSession(t.connId) !== profileId));
@@ -198,7 +228,7 @@ export default function App() {
           {tabs.map((t) => (
             <div
               key={t.id}
-              className={"tab" + (t.id === activeTab ? " active" : "")}
+              className={"tab" + (t.id === activeTab ? " active" : "") + (isProduction(t.connId) ? " prod" : "")}
               onClick={() => setActiveTab(t.id)}
               title={t.kind === "table" ? `${nameOf(t.connId)} · ${t.schema}.${t.table}` : nameOf(t.connId)}
             >
@@ -251,12 +281,20 @@ export default function App() {
           {tabs.map((t) => (
             <div key={t.id} className="tab-pane" hidden={t.id !== activeTab}>
               {t.kind === "table" ? (
-                <TableTab connId={t.connId} schema={t.schema!} table={t.table!} />
+                <TableTab
+                  connId={t.connId}
+                  schema={t.schema!}
+                  table={t.table!}
+                  readOnly={connected[t.connId]?.readOnly ?? true}
+                  production={isProduction(t.connId)}
+                  onSetReadOnly={(enabled) => changeReadOnly(t.connId, enabled)}
+                />
               ) : (
                 <SqlTab
                   connId={t.connId}
                   connName={nameOf(t.connId)}
                   readOnly={connected[t.connId]?.readOnly ?? true}
+                  production={isProduction(t.connId)}
                   onSetReadOnly={(enabled) => changeReadOnly(t.connId, enabled)}
                 />
               )}

@@ -18,6 +18,7 @@ function blank(): ConnectionProfile {
     password: "",
     sslMode: "disable",
     readOnly: true,
+    production: false,
   };
 }
 
@@ -105,6 +106,16 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
             <small>
               Postgres rechaza INSERT, UPDATE, DELETE y DDL en la sesión. Puedes habilitar escritura después
               desde el editor SQL.
+            </small>
+          </span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={p.production} onChange={(e) => set("production", e.target.checked)} />
+          <span>
+            <strong>Marcar como producción</strong>
+            <small>
+              Resalta la conexión en rojo en toda la interfaz y exige escribir el nombre de la base para habilitar la
+              escritura.
             </small>
           </span>
         </label>

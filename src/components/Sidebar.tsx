@@ -50,7 +50,7 @@ interface RowProps {
   label: string;
   icon?: IconName;
   iconClass?: string;
-  tag?: { text: string; tone: "ok" | "warn" };
+  tag?: { text: string; tone: "ok" | "warn" | "danger" };
   expandable?: boolean;
   expanded?: boolean;
   active?: boolean;
@@ -402,6 +402,7 @@ export default function Sidebar(props: Props) {
                 label={busy.has(id) ? `${profile.name} — conectando…` : profile.name}
                 icon="server"
                 iconClass={isConnected ? "ic-on" : "ic-off"}
+                tag={profile.production ? { text: "PROD", tone: "danger" } : undefined}
                 expandable={isConnected}
                 expanded={open}
                 title={`${profile.host}:${profile.port}`}

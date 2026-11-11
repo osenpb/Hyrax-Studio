@@ -1,28 +1,45 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
+  databaseOfSession,
   errorText,
   type ColumnFilter,
   type ColumnInfo,
   type ExportFormat,
+  type InsertValue,
   type SortKey,
   type TablePage,
 } from "../api";
 import { askExportPath } from "../exporting";
+import {
+  emptyPending,
+  pendingCount,
+  pkOf,
+  rowKeyOf,
+  stageCellEdit,
+  stageDelete,
+  summarize,
+  toChangeSet,
+  type Pending,
+} from "../editing";
 import { parseFilters } from "../filters";
-import ResultGrid from "./ResultGrid";
+import ResultGrid, { type GridEdit } from "./ResultGrid";
 import ExportMenu from "./ExportMenu";
+import ModeChip from "./ModeChip";
 import Icon from "./Icon";
 
 interface Props {
   connId: string;
   schema: string;
   table: string;
+  readOnly: boolean;
+  production: boolean;
+  onSetReadOnly: (readOnly: boolean) => Promise<void>;
 }
 
 const PAGE_SIZES = [50, 100, 200, 500, 1000];
 
-export default function TableTab({ connId, schema, table }: Props) {
+export default function TableTab({ connId, schema, table, readOnly, production, onSetReadOnly }: Props) {
   const [view, setView] = useState<"data" | "structure">("data");
   const [pageSize, setPageSize] = useState(200);
   const [offset, setOffset] = useState(0);
@@ -37,7 +54,11 @@ export default function TableTab({ connId, schema, table }: Props) {
   const [applied, setApplied] = useState<ColumnFilter[]>([]);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [pending, setPending] = useState<Pending>(emptyPending);
+  const [review, setReview] = useState<{ sql: string[]; error: string | null; applying: boolean } | null>(null);
   const lastApplied = useRef("[]");
+  const nextInsertId = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,7 +89,6 @@ export default function TableTab({ connId, schema, table }: Props) {
   }, [connId, schema, table, pageSize, offset, applied, sorts, reloadKey]);
 
   useEffect(() => {
-    if (view !== "structure") return;
     let cancelled = false;
     api
       .listColumns(connId, schema, table)
@@ -77,7 +97,7 @@ export default function TableTab({ connId, schema, table }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [view, connId, schema, table, reloadKey]);
+  }, [connId, schema, table, reloadKey]);
 
   const sort = useCallback((column: string, additive: boolean) => {
     setOffset(0);
@@ -130,9 +150,91 @@ export default function TableTab({ connId, schema, table }: Props) {
   const changeFilter = (column: string, value: string) =>
     setFilterInputs((prev) => ({ ...prev, [column]: value }));
 
-  const typedFilters = Object.values(filterInputs).filter((v) => v.trim() !== "").length;
+  const pageColumns = page?.result.columns ?? [];
+  const rows = page?.result.rows ?? [];
+  const pkColumns = columns?.filter((c) => c.isPrimaryKey).map((c) => c.name) ?? [];
+  const pkIndexes = pkColumns.map((name) => pageColumns.indexOf(name));
+  const pkReady = pkColumns.length > 0 && pkIndexes.every((i) => i >= 0);
+  const editBlock = readOnly
+    ? "La sesión está en solo lectura: habilita la escritura para editar"
+    : !columns
+      ? "Cargando la estructura de la tabla…"
+      : pkColumns.length === 0
+        ? "La tabla no tiene clave primaria: no se puede editar de forma segura"
+        : null;
+  const canEdit = editBlock === null && pkReady;
+  const editing = editMode && canEdit;
+  const count = pendingCount(pending);
 
-  const rowsShown = page?.result.rows.length ?? 0;
+  const editCell = (rowIndex: number, colIndex: number, value: string | null) => {
+    const row = rows[rowIndex];
+    const key = rowKeyOf(pkIndexes, row);
+    const pk = pkOf(pkColumns, pkIndexes, row);
+    setPending((p) => stageCellEdit(p, key, pk, pageColumns[colIndex], row[colIndex], value));
+  };
+
+  const markDeleted = (rowIndexes: number[]) => {
+    const entries = rowIndexes.map((i) => ({
+      key: rowKeyOf(pkIndexes, rows[i]),
+      pk: pkOf(pkColumns, pkIndexes, rows[i]),
+    }));
+    setPending((p) => stageDelete(p, entries));
+  };
+
+  const addInsert = () => {
+    nextInsertId.current += 1;
+    const id = nextInsertId.current;
+    setPending((p) => ({ ...p, inserts: [{ id, values: {} }, ...p.inserts] }));
+  };
+
+  const editInsert = (id: number, column: string, cell: InsertValue) =>
+    setPending((p) => ({
+      ...p,
+      inserts: p.inserts.map((d) => (d.id === id ? { ...d, values: { ...d.values, [column]: cell } } : d)),
+    }));
+
+  const removeInsert = (id: number) =>
+    setPending((p) => ({ ...p, inserts: p.inserts.filter((d) => d.id !== id) }));
+
+  const openReview = async () => {
+    setReview({ sql: [], error: null, applying: false });
+    try {
+      const sql = await api.previewChanges(connId, schema, table, toChangeSet(pending));
+      setReview({ sql, error: null, applying: false });
+    } catch (e) {
+      setReview({ sql: [], error: errorText(e), applying: false });
+    }
+  };
+
+  const applyPending = async () => {
+    setReview((r) => (r ? { ...r, applying: true, error: null } : r));
+    try {
+      const result = await api.applyChanges(connId, schema, table, toChangeSet(pending));
+      setPending(emptyPending);
+      setReview(null);
+      setNotice(
+        `Cambios aplicados en una transacción: ${result.updated} modificadas, ${result.inserted} nuevas, ${result.deleted} eliminadas.`,
+      );
+      refresh();
+    } catch (e) {
+      setReview((r) => (r ? { ...r, applying: false, error: errorText(e) } : r));
+    }
+  };
+
+  const gridEdit: GridEdit = {
+    enabled: editing,
+    pkColumns,
+    rowKey: (row) => rowKeyOf(pkIndexes, row),
+    updates: pending.updates,
+    deletedKeys: new Set(Object.keys(pending.deletes)),
+    onEditCell: editCell,
+    inserts: pending.inserts,
+    onEditInsert: editInsert,
+    onRemoveInsert: removeInsert,
+  };
+
+  const typedFilters = Object.values(filterInputs).filter((v) => v.trim() !== "").length;
+  const rowsShown = rows.length;
   const hasNext = rowsShown === pageSize;
   const total =
     exactCount !== null
@@ -145,8 +247,8 @@ export default function TableTab({ connId, schema, table }: Props) {
   const soft = error !== null && /^(Consulta cancelada|Tiempo de espera)/.test(error);
 
   return (
-    <div className="tab-body">
-      <div className="toolbar">
+    <div className={"tab-body" + (production ? " is-prod" : "")}>
+      <div className="toolbar wrap">
         <div className="segmented">
           <button className={view === "data" ? "active" : ""} onClick={() => setView("data")}>
             Datos
@@ -158,12 +260,32 @@ export default function TableTab({ connId, schema, table }: Props) {
         <span className="chip chip-plain">
           <Icon name="table" size={13} /> {schema}.{table}
         </span>
+        <ModeChip
+          readOnly={readOnly}
+          production={production}
+          database={databaseOfSession(connId)}
+          onSet={onSetReadOnly}
+          onError={setError}
+        />
         <span className="spacer" />
         {typedFilters > 0 && (
           <button onClick={() => setFilterInputs({})} title="Quitar todos los filtros">
             <Icon name="close" size={12} /> Limpiar filtros ({typedFilters})
           </button>
         )}
+        {editing && (
+          <button onClick={addInsert} title="Añadir una fila nueva (no se guarda hasta aplicar los cambios)">
+            <Icon name="plus" size={13} /> Nueva fila
+          </button>
+        )}
+        <button
+          className={editMode && canEdit ? "toggled" : ""}
+          onClick={() => setEditMode((m) => !m)}
+          disabled={(!canEdit && !editMode) || view !== "data"}
+          title={editBlock ?? "Doble clic en una celda para editarla; los cambios esperan hasta que los apliques"}
+        >
+          <Icon name="edit" size={13} /> {editing ? "Editando" : "Editar datos"}
+        </button>
         <ExportMenu onExport={exportData} disabled={exporting || view !== "data"} />
         <button onClick={refresh} disabled={loading}>
           <Icon name="refresh" size={13} /> Refrescar
@@ -187,6 +309,19 @@ export default function TableTab({ connId, schema, table }: Props) {
         </div>
       )}
 
+      {count > 0 && (
+        <div className="pending-bar">
+          <Icon name="edit" size={14} />
+          <strong>{count === 1 ? "1 cambio pendiente" : `${count} cambios pendientes`}</strong>
+          <span className="muted">{summarize(pending)} · todavía no se guardó nada en la base</span>
+          <span className="spacer" />
+          <button onClick={() => setPending(emptyPending)}>Descartar</button>
+          <button className="primary" onClick={() => void openReview()}>
+            Revisar y aplicar…
+          </button>
+        </div>
+      )}
+
       {view === "data" && (
         <>
           <div className="grid-host">
@@ -198,6 +333,14 @@ export default function TableTab({ connId, schema, table }: Props) {
                 onSort={sort}
                 filters={filterInputs}
                 onFilterChange={changeFilter}
+                edit={gridEdit}
+                selectionActions={(selectedRows) =>
+                  editing ? (
+                    <button className="small danger" onClick={() => markDeleted(selectedRows)}>
+                      <Icon name="trash" size={12} /> Marcar para eliminar
+                    </button>
+                  ) : null
+                }
               />
             )}
             {loading && (
@@ -252,7 +395,8 @@ export default function TableTab({ connId, schema, table }: Props) {
                 </button>
               </span>
             )}
-            {page && !exporting && <span className="muted">{page.elapsedMs} ms</span>}
+            {editing && !exporting && <span className="muted">Doble clic en una celda para editar</span>}
+            {page && !exporting && !editing && <span className="muted">{page.elapsedMs} ms</span>}
           </div>
         </>
       )}
@@ -284,6 +428,45 @@ export default function TableTab({ connId, schema, table }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {review && (
+        <div className="modal-backdrop" onMouseDown={() => !review.applying && setReview(null)}>
+          <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
+            <h2>Revisar y aplicar cambios</h2>
+            <p>
+              {summarize(pending)} en <strong>{schema}.{table}</strong>. Todo se ejecuta en una sola transacción: si
+              un cambio falla o la fila cambió mientras tanto, no se aplica ninguno.
+            </p>
+            {review.sql.length === 0 && !review.error && <p className="muted">Preparando…</p>}
+            {review.sql.length > 0 && <pre className="sql-preview">{review.sql.join("\n")}</pre>}
+            {review.error && (
+              <div className="alert alert-error">
+                <Icon name="alert" size={15} />
+                <span>{review.error}</span>
+              </div>
+            )}
+            {readOnly && (
+              <div className="alert alert-warn">
+                <Icon name="lock" size={15} />
+                <span>La sesión está en solo lectura: habilita la escritura para aplicar.</span>
+              </div>
+            )}
+            <div className="modal-actions">
+              <span className="spacer" />
+              <button onClick={() => setReview(null)} disabled={review.applying}>
+                Cerrar
+              </button>
+              <button
+                className="danger"
+                disabled={review.applying || readOnly || review.sql.length === 0}
+                onClick={() => void applyPending()}
+              >
+                {review.applying ? "Aplicando…" : "Aplicar cambios"}
+              </button>
+            </div>
           </div>
         </div>
       )}
