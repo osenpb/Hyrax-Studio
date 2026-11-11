@@ -1,140 +1,141 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="Logo de Hyrax Studio" width="120" />
+  <img src="src-tauri/icons/icon.png" alt="Hyrax Studio logo" width="120" />
 </p>
 
 <h1 align="center">Hyrax Studio</h1>
 
 <p align="center">
-  Cliente de bases de datos de escritorio, ligero y pensado para no romper producción.<br />
-  Hoy para PostgreSQL; MongoDB y otras bases NoSQL están en el plan.<br />
-  Rust + Tauri 2 en el backend, React + TypeScript en la interfaz.
+  A lightweight desktop database client, built so you don't break production.<br />
+  PostgreSQL today; MongoDB and other NoSQL databases are planned.<br />
+  Rust + Tauri 2 on the backend, React + TypeScript on the front end.
 </p>
 
-> **Estado: versión temprana (0.1).** Se usa a diario en desarrollo, pero todavía no se ha probado contra un clúster de producción real ni fuera de Windows. Antes de usarlo en serio, lee [Limitaciones actuales](#limitaciones-actuales).
+> **Status: early version (0.1).** It is used daily in development, but it has not been tested against a real production cluster or outside Windows. Read [Current limitations](#current-limitations) before relying on it. **The interface is currently in Spanish.**
 
-## Por qué Hyrax Studio
+## Why Hyrax Studio
 
-DataGrip y DBeaver hacen mucho; a veces demasiado, y pesan. Hyrax Studio apunta a lo que se usa todos los días (navegar el esquema, consultar, revisar y corregir datos) con un binario pequeño, arranque inmediato y poca memoria. Y con una regla de diseño: **un clic equivocado no debería costar una tabla**. Por eso arranca en solo lectura, pide confirmación para escribir y enseña el SQL exacto antes de aplicar cualquier cambio.
+DataGrip and DBeaver do a lot, sometimes too much, and they are heavy. Hyrax Studio aims at what you use every day (browsing the schema, querying, reviewing and fixing data) with a small binary, instant startup and low memory use. And with one design rule: **a wrong click should not cost you a table**. That is why it starts read-only, asks for confirmation before writing and shows the exact SQL before applying any change.
 
-## Qué hace
+## What it does
 
-**Navegar**
-- Árbol servidor → bases de datos → schemas → tablas/vistas → columnas, con carga perezosa y filtro.
-- `Ctrl+N` salta a cualquier tabla, vista, función, procedimiento o secuencia por nombre; `Ctrl+Mayús+A` abre la paleta de comandos.
-- DDL de tablas, vistas, funciones y secuencias, generado desde el catálogo.
-- Las claves foráneas son navegables en ambos sentidos: de un valor al registro relacionado y, desde una fila, a quién la referencia.
-- Pestaña **Estructura**: columnas, claves, índices, constraints, triggers, estadísticas y tamaño.
+**Browse**
+- Server → databases → schemas → tables/views → columns tree, lazy-loaded and filterable.
+- `Ctrl+N` jumps to any table, view, function, procedure or sequence by name; `Ctrl+Shift+A` opens the command palette.
+- DDL for tables, views, functions and sequences, generated from the catalog.
+- Foreign keys are navigable both ways: from a value to the related row and, from a row, to whatever references it.
+- **Structure** tab: columns, keys, indexes, constraints, triggers, statistics and size.
 
-**Consultar**
-- Editor SQL con resaltado, autocompletado (alias, `JOIN` sugerido por claves foráneas, funciones con su firma, plantillas), historial, formato y buscar y reemplazar.
-- `Ctrl+Enter` ejecuta la sentencia bajo el cursor; `Ctrl+Mayús+Enter`, todo el script. Parámetros `:nombre`, límite de tiempo, cancelar.
-- Plan de ejecución en árbol (Explicar/Analizar) con el nodo más costoso resaltado y aviso de estimaciones erradas.
-- Abrir y guardar scripts como archivos `.sql`.
+**Query**
+- SQL editor with highlighting, autocomplete (aliases, `JOIN` suggested from foreign keys, functions with their signature, snippets), history, formatting and find/replace.
+- `Ctrl+Enter` runs the statement under the cursor; `Ctrl+Shift+Enter` runs the whole script. `:name` parameters, time limit, cancel.
+- Execution plan as a tree (Explain/Analyze) with the most expensive node highlighted and warnings for bad estimates.
+- Open and save scripts as `.sql` files.
 
-**Trabajar con datos**
-- Visor de tablas con paginación, orden por varias columnas, filtros por columna (`>5`, `=x`, `^x`, `null`…), conteo estimado o exacto e inspector de celdas con JSON formateado.
-- **Edición segura**: celdas, filas nuevas y eliminadas quedan como cambios pendientes; se revisa el SQL y se aplican todos juntos en una transacción, con control de cambios concurrentes.
-- Importar CSV/TSV/JSON con asignación de columnas y ensayo previo; exportar a CSV, JSON o `INSERT` en streaming.
-- Fijar y comparar resultados; vista de fila como formulario.
-- Clic derecho en tablas, vistas y bases de datos: abrir, ver DDL, nueva consulta, copiar nombre y eliminar (pide escritura habilitada, muestra el SQL y exige escribir el nombre).
+**Work with data**
+- Table viewer with pagination, multi-column sorting, per-column filters (`>5`, `=x`, `^x`, `null`…), estimated or exact count and a cell inspector with formatted JSON.
+- **Safe editing**: edited cells, new rows and deleted rows stay as pending changes; you review the SQL and all of it is applied together in one transaction, with concurrent-change detection.
+- Import CSV/TSV/JSON with column mapping and a dry run first; export to CSV, JSON or `INSERT` statements, streamed.
+- Pin and compare results; row view as a form.
+- Right-click on tables, views and databases: open, view DDL, new query, copy name and drop (requires write mode, shows the SQL and asks you to type the name).
 
-**Conectar**
-- Conexiones guardadas, con pegado de cadenas `postgresql://usuario:clave@host:5432/base?sslmode=…`.
-- **Túnel SSH** con clave privada o contraseña. La clave del servidor SSH no se acepta a ciegas: la primera vez se muestra su huella SHA-256 para que la confirmes, queda fijada en la conexión y, si cambia, Hyrax se niega a conectar.
+**Connect**
+- Saved connections, with pasting of `postgresql://user:password@host:5432/db?sslmode=…` strings.
+- **SSH tunnel** with a private key or a password. The SSH server's host key is never accepted blindly: the first time its SHA-256 fingerprint is shown for you to confirm, it is pinned to the connection, and if it ever changes Hyrax refuses to connect.
 
-**Seguridad**
-- Solo lectura por defecto; la escritura se confirma y caduca sola a los 10 minutos, comprobado en el servidor.
-- Conexiones marcables como **producción**, con confirmación reforzada.
-- Contraseñas en el almacén de credenciales del sistema, nunca en archivos. TLS con verificación de certificado.
-- Aviso ante `DELETE`/`UPDATE` sin `WHERE`, `DROP` y `TRUNCATE`, y "Probar (ROLLBACK)" para ver el efecto sin guardar nada.
-- Detalle y riesgos residuales en [docs/SEGURIDAD.md](docs/SEGURIDAD.md).
+**Safety**
+- Read-only by default; write mode needs confirmation and expires by itself after 10 minutes, enforced on the server side.
+- Connections can be marked as **production**, with stronger confirmation.
+- Passwords live in the operating system credential store, never in files. TLS with certificate verification.
+- Warnings for `DELETE`/`UPDATE` without `WHERE`, `DROP` and `TRUNCATE`, and a "Test (ROLLBACK)" button to see the effect without saving anything.
+- Details and residual risks in [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md).
 
-Temas oscuro, claro o automático. Tipografías Inter y JetBrains Mono incluidas en la app.
+Dark, light or automatic theme. Inter and JetBrains Mono fonts are bundled with the app.
 
-## Limitaciones actuales
+## Current limitations
 
-Lo que hay que saber antes de confiar en Hyrax:
+What you should know before trusting Hyrax:
 
-**Seguridad**
-- **El modo solo lectura de la aplicación es un guardarraíl, no una barrera.** Quien conozca Postgres puede encontrar formas de saltárselo (por ejemplo, funciones del lado del servidor). La protección real es conectarse con una cuenta de base de datos **sin permisos de escritura**.
-- La confirmación de producción solo funciona si marcas la conexión como producción; Hyrax no lo adivina.
-- Con `ssl=require` (sin verificar) un intermediario podría suplantar al servidor. Usa "Cifrado y verificar el certificado".
-- El historial de consultas se guarda en claro en tu equipo mientras esté activado.
-- Con un túnel SSH abierto, el puerto local (solo `127.0.0.1`) acepta conexiones de cualquier proceso de tu equipo mientras dure la sesión, como en cualquier reenvío de puertos; Postgres sigue pidiendo su propia autenticación.
-- El túnel se probó contra un `sshd` local con clave privada; la contraseña SSH y la verificación TLS a través del túnel no se han probado de punta a punta. Cada base abierta de una conexión con túnel abre su propia sesión SSH.
-- Dependencias: `cargo audit` marca `crypto-bigint` (variaciones de tiempo, vía `russh`) sin corrección disponible todavía; detalle en [docs/SEGURIDAD.md](docs/SEGURIDAD.md).
+**Security**
+- **The app's read-only mode is a guardrail, not a barrier.** Someone who knows Postgres can find ways around it (for example, server-side functions). The real protection is connecting with a database account that has **no write permissions**.
+- The production confirmation only works if you mark the connection as production; Hyrax cannot guess it.
+- With `ssl=require` (no verification) a man in the middle could impersonate the server. Use "Encrypted and verify the certificate".
+- Query history is stored in plain text on your machine while it is enabled.
+- With an SSH tunnel open, the local port (`127.0.0.1` only) accepts connections from any process on your machine for the duration of the session, as with any port forward; Postgres still requires its own authentication.
+- The tunnel was tested against a local `sshd` with a private key; SSH password authentication and TLS verification through the tunnel have not been tested end to end. Each open database of a tunneled connection opens its own SSH session.
+- Dependencies: `cargo audit` flags `crypto-bigint` (timing variations, through `russh`) with no fix available yet; details in [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md).
 
-**Madurez**
-- Solo probado en **Windows**. Linux y macOS no se han probado.
-- No se ha probado contra un clúster de producción real, solo contra instancias desechables de PostgreSQL 17.
-- No hay instalador firmado ni actualizaciones automáticas todavía.
-- Requiere PostgreSQL 11 o superior.
+**Maturity**
+- Tested on **Windows** only. Linux and macOS have not been tested.
+- Not tested against a real production cluster, only against disposable PostgreSQL 17 instances.
+- No signed installer and no automatic updates yet.
+- Requires PostgreSQL 11 or later.
 
-**Datos y rendimiento**
-- Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la rejilla.
-- Un resultado de más de 100.000 filas se cancela en el servidor y se muestra como "100.000+"; en pantalla se guardan hasta 5.000 filas por resultado.
-- La importación admite hasta 200.000 filas o 64 MB por archivo, en UTF-8.
-- La edición exige tablas con **clave primaria**; las vistas son de solo lectura.
-- Comparar resultados solo compara las filas cargadas (hasta 5.000), no tablas completas.
-- Los parámetros `:nombre` se sustituyen como literales escapados, no como parámetros enlazados, y no se detectan dentro de cadenas, comentarios ni bloques `$$`.
+**Data and performance**
+- All values are shown as text (Postgres simple protocol); there are no native types in the grid.
+- A result with more than 100,000 rows is cancelled on the server and shown as "100,000+"; up to 5,000 rows per result are kept on screen.
+- Import supports up to 200,000 rows or 64 MB per file, in UTF-8.
+- Editing requires tables with a **primary key**; views are read-only.
+- Comparing results only compares the loaded rows (up to 5,000), not whole tables.
+- `:name` parameters are substituted as escaped literals, not as bound protocol parameters, and are not detected inside strings, comments or `$$` blocks.
 
-**Funcionalidad que aún no existe**
-- Túnel SSH con `ssh-agent`, saltos (`ProxyJump`) o lectura de `~/.ssh/known_hosts`: hoy solo clave privada en archivo o contraseña, con la huella fijada en la conexión. Cadenas de conexión con otros parámetros de libpq además de `sslmode` y `sslrootcert`.
-- Importar conexiones desde DBeaver o pgAdmin.
-- Diagrama ER, comparación de esquemas, monitor de sesiones, gestión de roles y privilegios.
-- Eliminar schemas; "Ir a objeto" no incluye índices, constraints ni triggers como entradas propias.
-- Autocompletado de palabras clave según el contexto, panel de scripts y plantillas propias.
-- Otros motores: solo PostgreSQL. MongoDB está contemplado para más adelante.
+**Not available yet**
+- SSH tunnel with `ssh-agent`, jump hosts (`ProxyJump`) or reading `~/.ssh/known_hosts`: today only a private key file or a password, with the fingerprint pinned to the connection. Connection strings with libpq parameters other than `sslmode` and `sslrootcert`.
+- Importing connections from DBeaver or pgAdmin.
+- ER diagrams, schema comparison, session monitor, role and privilege management.
+- Dropping schemas; "Go to object" does not list indexes, constraints or triggers as entries of their own.
+- Context-aware keyword autocomplete, a scripts panel and custom snippets.
+- Other engines: PostgreSQL only. MongoDB support is [being planned](docs/MONGODB.md).
 
-El plan completo está en [docs/ROADMAP.md](docs/ROADMAP.md).
+The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Uso recomendado en producción
+## Recommended use in production
 
-1. Conéctate con una cuenta de base de datos **sin permisos de escritura** (en [docs/SEGURIDAD.md](docs/SEGURIDAD.md) hay un rol de ejemplo).
-2. Elige "Cifrado y verificar el certificado".
-3. Marca la conexión como producción.
-4. Habilita la escritura solo cuando haga falta y revisa siempre el SQL antes de aplicar.
+1. Connect with a database account that has **no write permissions** (there is an example role in [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md)).
+2. Choose "Encrypted and verify the certificate".
+3. Mark the connection as production.
+4. Enable write mode only when needed and always review the SQL before applying.
 
-## Datos guardados y cómo borrarlos
+## Saved data and how to erase it
 
-Las conexiones se guardan en tu carpeta de datos de usuario (`%APPDATA%\dev.osen.hyrax\profiles.json`) y las contraseñas y claves SSH, en el Administrador de credenciales de Windows. **Nada de eso viaja dentro del instalador**: una instalación nueva en otro equipo o usuario arranca vacía. En un equipo donde ya usaste la app, la versión instalada lee esas mismas conexiones, y desinstalar no las borra.
+Connections are stored in your user data folder (`%APPDATA%\dev.osen.hyrax\profiles.json`), and passwords and SSH keys in the Windows Credential Manager. **None of that ships inside the installer**: a fresh install on another machine or user account starts empty. On a machine where you already used the app, the installed version reads those same connections, and uninstalling does not remove them.
 
-Para dejar la app como recién instalada: `Ctrl+Mayús+A` → «Borrar conexiones y contraseñas guardadas…» (pide escribir `BORRAR`). Quita las conexiones, sus contraseñas y claves SSH, y opcionalmente el historial de consultas. No toca ninguna base de datos.
+To leave the app as if freshly installed: `Ctrl+Shift+A` → "Borrar conexiones y contraseñas guardadas…" (you must type `BORRAR`). It removes the connections, their passwords and SSH keys, and optionally the query history. It does not touch any database.
 
-## Ejecutar desde el código
+## Run from source
 
-Requisitos: Rust (MSVC en Windows), Node 20+ y WebView2 (incluido en Windows 11).
+Requirements: Rust (MSVC on Windows), Node 20+ and WebView2 (included in Windows 11).
 
 ```
 npm install
-npm run tauri dev      # desarrollo
-npm run tauri build    # instalador
+npm run tauri dev      # development
+npm run tauri build    # installer
 ```
 
-## Pruebas
+## Tests
 
 ```
-npm test                         # interfaz, con backend simulado
-cd src-tauri && cargo test       # unitarias del backend
+npm test                         # UI, with a mocked backend
+cd src-tauri && cargo test       # backend unit tests
 ```
 
-Las pruebas de integración del backend están marcadas `#[ignore]` y necesitan servidores reales. Las de lectura usan `HYRAX_TEST_HOST/PORT/DB/USER/PASSWORD`. Las de **escritura** usan `HYRAX_WRITE_TEST_*` y se niegan a correr si la base no se llama `scratch`: úsalas solo con un Postgres desechable, nunca con datos reales. Las de TLS necesitan además `HYRAX_TLS_CA_PATH`.
+The backend integration tests are marked `#[ignore]` and need real servers. The read tests use `HYRAX_TEST_HOST/PORT/DB/USER/PASSWORD`. The **write** tests use `HYRAX_WRITE_TEST_*` and refuse to run unless the database is named `scratch`: use them only with a disposable Postgres, never with real data. The TLS tests also need `HYRAX_TLS_CA_PATH`.
 
 ```
 cargo test -- --include-ignored
 ```
 
-## Documentación
+## Documentation
 
-- [docs/ROADMAP.md](docs/ROADMAP.md): etapas hechas y pendientes.
-- [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md): estructura y decisiones.
-- [docs/SEGURIDAD.md](docs/SEGURIDAD.md): revisión de seguridad y riesgos residuales.
-- [SECURITY.md](SECURITY.md): cómo informar vulnerabilidades.
+- [docs/ROADMAP.md](docs/ROADMAP.md): finished and pending stages.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): structure and design decisions.
+- [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md): security review and residual risks.
+- [docs/MONGODB.md](docs/MONGODB.md): plan for MongoDB support.
+- [SECURITY.md](SECURITY.md): how to report vulnerabilities.
 
-## Estado del proyecto y contribuciones
+## Project status and contributions
 
-Hyrax es un proyecto personal en desarrollo activo. Los reportes de errores son bienvenidos; para problemas de seguridad usa el canal privado descrito en [SECURITY.md](SECURITY.md), no un issue público.
+Hyrax Studio is a personal project under active development. Bug reports are welcome; for security problems use the private channel described in [SECURITY.md](SECURITY.md), not a public issue.
 
-## Licencia
+## License
 
 [MIT](LICENSE).
