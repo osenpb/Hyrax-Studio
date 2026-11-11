@@ -4,7 +4,7 @@ Alcance: Hyrax v0.1 tras las etapas 1–8, pensando en su uso contra bases de pr
 
 ## Resumen
 
-No se encontraron vulnerabilidades explotables en las dependencias ni inyección SQL. Sí había cuatro problemas de diseño que importaban para producción, todos corregidos (S-01 a S-04), más varios endurecimientos menores. Lo que sigue siendo cierto: el modo solo lectura de la aplicación es una red de seguridad contra errores, **no** una barrera contra alguien que quiera escribir; para producción la barrera real es una cuenta de base de datos sin permisos de escritura (ver "Recomendaciones").
+No se encontraron vulnerabilidades explotables en las dependencias (de la versión original; ver la actualización del túnel SSH para la situación actual) ni inyección SQL. Sí había cuatro problemas de diseño que importaban para producción, todos corregidos (S-01 a S-04), más varios endurecimientos menores. Lo que sigue siendo cierto: el modo solo lectura de la aplicación es una red de seguridad contra errores, **no** una barrera contra alguien que quiera escribir; para producción la barrera real es una cuenta de base de datos sin permisos de escritura (ver "Recomendaciones").
 
 ## Hallazgos
 
@@ -24,6 +24,17 @@ No se encontraron vulnerabilidades explotables en las dependencias ni inyección
 | S-12 | Aceptado | La CSP permite estilos en línea | Lo necesitan React y CodeMirror. No permite ejecutar código |
 | S-13 | Aceptado | Quien controle tu sesión de Windows puede leer el Administrador de credenciales | Es el límite de confianza normal de cualquier cliente de bases de datos |
 | S-14 | Pendiente | Sin firma de código ni actualizaciones automáticas | Para la distribución pública |
+
+## Actualización (2026-11-11): túnel SSH, cadenas de conexión y rename a Hyrax
+
+- **Túnel SSH** (`src-tauri/src/tunnel.rs`): reenvío local de puertos con `russh`. El puerto local escucha solo en `127.0.0.1` y se cierra al soltar la sesión. La **clave del servidor SSH se fija por su huella SHA-256 en la conexión**: sin huella guardada la conexión falla devolviendo la huella para confirmarla; si luego cambia, falla con un aviso de posible ataque de intermediario. Nunca se acepta una clave desconocida de forma silenciosa. La frase de la clave o la contraseña SSH van al almacén del sistema (entrada `ssh:<id>`), no a `profiles.json`.
+- Con TLS verificado a través del túnel, el certificado se valida contra el host real (se conecta a `127.0.0.1` con `hostaddr` pero `host` sigue siendo el servidor).
+- **Cadenas de conexión**: se analizan en la interfaz, la contraseña pasa al almacén del sistema al guardar y el campo se vacía al aplicarla. Los valores desconocidos de `sslmode` se rechazan y `prefer`/`allow` no se traducen en silencio.
+- **Rename PgDesk → Hyrax**: cambió el identificador de la app y el servicio del almacén de credenciales. Al arrancar se copia una vez el `profiles.json` antiguo y la primera lectura de cada contraseña la mueve del servicio `pgdesk` al `hyrax`. Las dos rutas tienen pruebas automáticas.
+- **Auditoría de dependencias tras añadir `russh`** (`cargo audit`, 2026-11-11): `russh 0.54` tenía dos avisos propios (RUSTSEC-2026-0153 y -0154, asignación sin límite desde datos del servidor); se corrigieron subiendo a `russh 0.60.3`. Quedan: `crypto-bigint 0.7.0-rc.28` (RUSTSEC-2026-0387, variaciones de tiempo en operaciones que deberían ser de tiempo constante), que viene de `russh` y se compila; y `rsa 0.10.0-rc.16` (RUSTSEC-2023-0071, ataque Marvin), que aparece en `Cargo.lock` pero **no se compila** (`cargo tree -i rsa` no lo encuentra). Ninguno se puede corregir desde Hyrax: dependen de una versión nueva de `russh`. Son canales de tiempo que exigen a un atacante medir operaciones con tu clave privada en tu propio equipo. Se revisarán al actualizar `russh`. `npm audit`: 0 vulnerabilidades.
+- Revisión de código del túnel (hallazgos corregidos): tiempo máximo también durante la autenticación; la clave privada se descifra fuera de los hilos asíncronos; si el servidor SSH no puede reenviar hacia Postgres el error lo dice desde el principio (se comprobó contra un destino inalcanzable); el secreto SSH solo se guarda con el túnel activo y se puede olvidar; cambiar el host o puerto SSH invalida la huella de confianza; `~` en la ruta de la clave; puertos validados; `postgresql://h:80/db` ya no pierde el puerto y las cadenas sin host se rechazan con un mensaje claro.
+- Coste conocido: cada base abierta de un perfil con túnel abre su propia sesión SSH (con su autenticación); un túnel compartido por perfil queda pendiente.
+- Riesgos residuales nuevos: cualquier proceso local puede abrir el puerto del túnel mientras la sesión esté abierta; la contraseña SSH y TLS a través del túnel no se probaron de punta a punta (sí clave privada, huella desconocida, huella cambiada, clave no autorizada y cierre del puerto, contra un `sshd` local).
 
 ## Actualización (2026-11-11): etapas 9 a 11
 
@@ -96,12 +107,12 @@ ALTER ROLE hyrax_ro SET idle_in_transaction_session_timeout = '30s';
 
 - Revisado: no hay contraseñas, direcciones de servidores ni rutas personales en los archivos versionados.
 - Los commits llevan el nombre y el correo configurados en git en tu equipo; si no quieres que el correo sea público, cámbialo antes de publicar (`git config user.email`, y reescribe el historial si ya hay commits).
-- Falta elegir una **licencia**.
+- Licencia: MIT.
 - `SECURITY.md` indica cómo informar problemas; ajusta el medio de contacto cuando exista el repositorio.
 
 ## Cómo se verificó
 
-- Backend: 51 pruebas (31 unitarias y 20 de integración contra Postgres reales: lecturas, escrituras, TLS y caducidad contra una base desechable) y escaneo de dependencias. El 2026-11-11 se volvieron a correr las de integración (salvo las de TLS, que necesitan certificado) contra un PostgreSQL 17.5 desechable creado con `initdb` en una carpeta temporal.
-- Interfaz: 95 pruebas (70 con backend simulado y 25 de la lógica pura: sentencias, parámetros, plan, CSV/JSON, comparación, JOIN por FK).
+- Backend (2026-11-11, tras el rename y el túnel): 44 unitarias y 22 de integración. Se corrieron 20 de las de integración contra un PostgreSQL 17.5 desechable (las 2 de TLS necesitan certificado), incluida la del túnel SSH contra un `sshd` local temporal: huella desconocida, huella cambiada, clave de usuario no autorizada, destino inalcanzable, conexión correcta y cierre del puerto al soltar la sesión. También hay pruebas automáticas de la migración de perfiles y de contraseñas desde PgDesk. Escaneo de dependencias con `cargo audit` y `npm audit`. El 2026-11-11 se volvieron a correr las de integración (salvo las de TLS, que necesitan certificado) contra un PostgreSQL 17.5 desechable creado con `initdb` en una carpeta temporal.
+- Interfaz: 110 pruebas (con backend simulado y de la lógica pura: sentencias, parámetros, plan, CSV/JSON, comparación, JOIN por FK, cadenas de conexión).
 - Aplicación real (2026-11-11), con una configuración y un perfil de WebView aislados y la base desechable: Ctrl+N, salto por clave foránea en ambos sentidos, estructura y DDL, rejilla virtualizada (desplazamiento exacto y sin huecos con 200 filas cargadas), sentencia bajo el cursor, parámetros, plan con ANALYZE, JOIN sugerido por FK, buscar y reemplazar, vista de fila editando hasta aplicar en la base, comparación, y los comandos de importación y de archivos a través del puente real de Tauri (ensayo, importación, rechazo atómico de un duplicado). Los diálogos nativos de abrir y guardar no se pudieron automatizar: su lógica de rutas está probada con pruebas unitarias y no se vio el diálogo en pantalla.
 - Aplicación real: migración de credenciales, conexión TLS verificada, edición con aplicación real y comprobación en la base, confirmación de producción, rechazo del servidor ante intentos de saltársela, capturas de ambos temas y sondas de la CSP.
