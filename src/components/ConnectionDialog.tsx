@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { api, errorText, noMongo, noSsh, type ConnectionProfile } from "../api";
-import { parseConnectionString } from "../connstring";
+import { api, errorText, noMongo, noSsh, type ConnectionProfile, type Engine } from "../api";
+import { detectEngine, parseConnectionString, parseMongoUri } from "../connstring";
 
 interface Props {
   initial: ConnectionProfile | null;
@@ -47,32 +47,79 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
   const set = <K extends keyof ConnectionProfile>(key: K, value: ConnectionProfile[K]) =>
     setP((prev) => ({ ...prev, [key]: value }));
 
+  const mongo = p.engine === "mongodb";
+
+  const chooseEngine = (engine: Engine) => {
+    if (initial || engine === p.engine) return;
+    setMessage(null);
+    setUnknownKey(null);
+    setP((prev) =>
+      engine === "mongodb"
+        ? { ...prev, engine, port: 27017, database: "", user: "", sslMode: "disable", ssh: noSsh(), mongo: noMongo() }
+        : { ...prev, engine, port: 5432, database: "postgres", user: "postgres", sslMode: "disable", mongo: noMongo() },
+    );
+  };
+
   const [raw, setRaw] = useState("");
   const applyString = (text: string) => {
     setRaw("");
     if (!text.trim()) return;
     try {
-      const { fields, notes } = parseConnectionString(text);
-      setP((prev) => ({ ...prev, ...fields }));
-      setMessage({
-        ok: true,
-        text: ["Cadena aplicada." + (fields.password ? " La contraseña se guardará en el almacén del sistema." : ""), ...notes].join(" "),
-      });
+      const engine = detectEngine(text);
+      if (engine && initial && engine !== p.engine) {
+        throw new Error(`Esta conexión es de ${p.engine === "mongodb" ? "MongoDB" : "PostgreSQL"}; la cadena es de otro motor.`);
+      }
+      const done = (hasPassword: boolean, notes: string[]) =>
+        setMessage({
+          ok: true,
+          text: ["Cadena aplicada." + (hasPassword ? " La contraseña se guardará en el almacén del sistema." : ""), ...notes].join(" "),
+        });
+      if (engine === "mongodb") {
+        const { fields, mongo: settings, notes } = parseMongoUri(text);
+        setP((prev) => ({
+          ...prev,
+          ...fields,
+          engine: "mongodb",
+          mongo: settings,
+          ssh: noSsh(),
+          database: fields.database ?? "",
+          user: fields.user ?? "",
+          port: fields.port ?? prev.port,
+        }));
+        done(!!fields.password, notes);
+      } else {
+        const { fields, notes } = parseConnectionString(text);
+        setP((prev) => ({ ...prev, ...fields, engine: "postgres" }));
+        done(!!fields.password, notes);
+      }
     } catch (e) {
       setMessage({ ok: false, text: errorText(e) });
     }
   };
 
   const portOk = (n: number) => Number.isInteger(n) && n >= 1 && n <= 65535;
-  const valid =
-    p.host.trim() &&
-    p.database.trim() &&
-    p.user.trim() &&
-    portOk(p.port) &&
-    (!p.ssh.enabled || (p.ssh.host.trim() && p.ssh.user.trim() && portOk(p.ssh.port)));
+  const valid = mongo
+    ? !!p.host.trim() && (p.mongo.srv || portOk(p.port))
+    : p.host.trim() &&
+      p.database.trim() &&
+      p.user.trim() &&
+      portOk(p.port) &&
+      (!p.ssh.enabled || (p.ssh.host.trim() && p.ssh.user.trim() && portOk(p.ssh.port)));
   // Para guardar hace falta haber confiado en la huella del servidor SSH (se obtiene con «Probar»).
-  const canSave = valid && (!p.ssh.enabled || !!p.ssh.fingerprint);
-  const finalName = p.name.trim() || `${p.user}@${p.host}/${p.database}`;
+  const canSave = valid && (mongo || !p.ssh.enabled || !!p.ssh.fingerprint);
+  const finalName =
+    p.name.trim() || (mongo ? `${p.user ? p.user + "@" : ""}${p.host}` : `${p.user}@${p.host}/${p.database}`);
+  const setMongo = <K extends keyof ConnectionProfile["mongo"]>(key: K, value: ConnectionProfile["mongo"][K]) =>
+    setP((prev) => {
+      const next = { ...prev, mongo: { ...prev.mongo, [key]: value } };
+      // Atlas (mongodb+srv) exige TLS: se propone verificarlo, sin pisar una elección ya hecha.
+      if (key === "srv" && value === true) {
+        next.mongo.extraHosts = "";
+        next.mongo.directConnection = false;
+        if (prev.sslMode === "disable") next.sslMode = "verify";
+      }
+      return next;
+    });
 
   const setSsh = <K extends keyof ConnectionProfile["ssh"]>(key: K, value: ConnectionProfile["ssh"][K]) => {
     const changesServer = key === "host" || key === "port";
@@ -213,12 +260,32 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <h2>{initial ? "Editar conexión" : "Nueva conexión"}</h2>
+        {!initial && (
+          <div className="engine-pick" role="radiogroup" aria-label="Motor">
+            {(["postgres", "mongodb"] as const).map((e) => (
+              <button
+                key={e}
+                type="button"
+                role="radio"
+                aria-checked={p.engine === e}
+                className={p.engine === e ? "active" : ""}
+                onClick={() => chooseEngine(e)}
+              >
+                {e === "postgres" ? "PostgreSQL" : "MongoDB"}
+              </button>
+            ))}
+          </div>
+        )}
         <label>
           Cadena de conexión (opcional)
           <input
             autoComplete="off"
             spellCheck={false}
-            placeholder="postgresql://usuario:clave@host:5432/base?sslmode=verify-full"
+            placeholder={
+              mongo
+                ? "mongodb+srv://usuario:clave@cluster0.abcde.mongodb.net/base"
+                : "postgresql://usuario:clave@host:5432/base?sslmode=verify-full"
+            }
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
             onPaste={(e) => {
@@ -233,22 +300,39 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
           Nombre
           <input value={p.name} placeholder={finalName} onChange={(e) => set("name", e.target.value)} />
         </label>
+        {mongo && (
+          <label className="check">
+            <input type="checkbox" checked={p.mongo.srv} onChange={(e) => setMongo("srv", e.target.checked)} />
+            <span>
+              <strong>Usar mongodb+srv (Atlas)</strong>
+              <small>El host es el nombre DNS del cluster; los nodos y el puerto salen del registro DNS. Exige TLS.</small>
+            </span>
+          </label>
+        )}
         <div className="row">
           <label className="grow">
-            Host
+            {mongo && p.mongo.srv ? "Host (nombre DNS del cluster)" : "Host"}
             <input value={p.host} onChange={(e) => set("host", e.target.value)} />
           </label>
-          <label className="port">
-            Puerto
+          {!(mongo && p.mongo.srv) && (
+            <label className="port">
+              Puerto
+              <input type="number" value={p.port} onChange={(e) => set("port", Number(e.target.value))} />
+            </label>
+          )}
+        </div>
+        {mongo && !p.mongo.srv && (
+          <label>
+            Otros nodos del conjunto de réplicas (opcional, separados por comas)
             <input
-              type="number"
-              value={p.port}
-              onChange={(e) => set("port", Number(e.target.value))}
+              value={p.mongo.extraHosts}
+              placeholder="host2:27017, host3:27017"
+              onChange={(e) => setMongo("extraHosts", e.target.value)}
             />
           </label>
-        </div>
+        )}
         <label>
-          Base de datos
+          {mongo ? "Base de datos (opcional)" : "Base de datos"}
           <input value={p.database} onChange={(e) => set("database", e.target.value)} />
         </label>
         <div className="row">
@@ -268,7 +352,7 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
           </label>
         </div>
         <label>
-          SSL
+          {mongo ? "TLS" : "SSL"}
           <select value={p.sslMode} onChange={(e) => set("sslMode", e.target.value as ConnectionProfile["sslMode"])}>
             <option value="disable">Desactivado</option>
             <option value="require">Cifrado sin verificar el certificado</option>
@@ -293,14 +377,47 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
             />
           </label>
         )}
-        {sshBlock}
+        {mongo && (
+          <div className="row">
+            <label className="grow">
+              Base de autenticación (vacío = admin)
+              <input
+                value={p.mongo.authSource ?? ""}
+                placeholder="admin"
+                onChange={(e) => setMongo("authSource", e.target.value.trim() === "" ? null : e.target.value)}
+              />
+            </label>
+            <label className="grow">
+              Conjunto de réplicas (opcional)
+              <input
+                value={p.mongo.replicaSet ?? ""}
+                onChange={(e) => setMongo("replicaSet", e.target.value.trim() === "" ? null : e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+        {mongo && !p.mongo.srv && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={p.mongo.directConnection}
+              onChange={(e) => setMongo("directConnection", e.target.checked)}
+            />
+            <span>
+              <strong>Conexión directa a este nodo</strong>
+              <small>No descubre el resto del conjunto de réplicas. Útil si solo se llega a ese nodo.</small>
+            </span>
+          </label>
+        )}
+        {!mongo && sshBlock}
         <label className="check">
           <input type="checkbox" checked={p.readOnly} onChange={(e) => set("readOnly", e.target.checked)} />
           <span>
             <strong>Abrir en modo solo lectura</strong>
             <small>
-              Postgres rechaza INSERT, UPDATE, DELETE y DDL en la sesión. Puedes habilitar escritura después
-              desde el editor SQL.
+              {mongo
+                ? "Hyrax no lanzará operaciones de escritura. Es un guardarraíl: MongoDB no tiene solo lectura por sesión, así que la protección real es usar un usuario con el rol read."
+                : "Postgres rechaza INSERT, UPDATE, DELETE y DDL en la sesión. Puedes habilitar escritura después desde el editor SQL."}
             </small>
           </span>
         </label>

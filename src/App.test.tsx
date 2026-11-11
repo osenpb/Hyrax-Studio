@@ -202,6 +202,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return openedFile;
       case "save_text_file":
         return { path: "C:/scripts/consulta.sql", name: "consulta.sql", content: "" };
+      case "test_connection":
+        return args.profile && (args.profile as { engine?: string }).engine === "mongodb" ? "MongoDB 8.0.3" : "PostgreSQL 16";
       case "reset_app_data":
         if (args.confirm !== "BORRAR") throw "confirmación incorrecta";
         profilesCleared = true;
@@ -1629,5 +1631,89 @@ describe("borrar conexiones y contraseñas guardadas", () => {
     await waitFor(() => expect(screen.queryByText("dev_erp")).toBeNull());
     expect(localStorage.getItem("hyrax-history:p1")).not.toBeNull();
     localStorage.removeItem("hyrax-history:p1");
+  });
+});
+
+describe("conexión por motor", () => {
+  const openNew = async (user: ReturnType<typeof userEvent.setup>) => {
+    render(<App />);
+    await screen.findByText("dev_erp");
+    await user.click(screen.getByTitle("Nueva conexión"));
+    return await screen.findByRole("radiogroup", { name: "Motor" });
+  };
+
+  it("al crear se elige el motor; PostgreSQL es el predeterminado y MongoDB cambia los campos", async () => {
+    const user = userEvent.setup();
+    const picker = await openNew(user);
+    const pg = within(picker).getByRole("radio", { name: "PostgreSQL" });
+    const mongo = within(picker).getByRole("radio", { name: "MongoDB" });
+    expect(pg.getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByText("Usar mongodb+srv (Atlas)")).toBeNull();
+    expect(screen.getByText("Conectar por un túnel SSH")).toBeTruthy();
+
+    await user.click(mongo);
+    expect(mongo.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByText("Usar mongodb+srv (Atlas)")).toBeTruthy();
+    expect(screen.getByText("Base de autenticación (vacío = admin)")).toBeTruthy();
+    expect(screen.getByText("Base de datos (opcional)")).toBeTruthy();
+    expect(screen.queryByText("Conectar por un túnel SSH")).toBeNull();
+    expect((screen.getByLabelText(/^Puerto/) as HTMLInputElement).value).toBe("27017");
+  });
+
+  it("mongodb+srv oculta el puerto y los nodos, y propone verificar TLS", async () => {
+    const user = userEvent.setup();
+    const picker = await openNew(user);
+    await user.click(within(picker).getByRole("radio", { name: "MongoDB" }));
+    expect(screen.getByText("Otros nodos del conjunto de réplicas (opcional, separados por comas)")).toBeTruthy();
+
+    await user.click(screen.getByLabelText(/Usar mongodb\+srv/));
+    expect(screen.queryByLabelText(/^Puerto/)).toBeNull();
+    expect(screen.queryByText("Otros nodos del conjunto de réplicas (opcional, separados por comas)")).toBeNull();
+    expect(screen.getByText("Host (nombre DNS del cluster)")).toBeTruthy();
+    expect((screen.getByLabelText("TLS") as HTMLSelectElement).value).toBe("verify");
+  });
+
+  it("pegar una cadena mongodb+srv cambia el motor y rellena los campos; Probar y Guardar mandan engine mongodb", async () => {
+    const user = userEvent.setup();
+    await openNew(user);
+    const box = screen.getByPlaceholderText(/postgresql:\/\/usuario:clave@host:5432/);
+    fireEvent.paste(box, {
+      clipboardData: { getData: () => "mongodb+srv://ana:s3@cluster0.abcde.mongodb.net/ventas?authSource=admin" },
+    });
+
+    expect(await screen.findByText(/Cadena aplicada\./)).toBeTruthy();
+    expect(within(screen.getByRole("radiogroup", { name: "Motor" })).getByRole("radio", { name: "MongoDB" }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByLabelText("Host (nombre DNS del cluster)") as HTMLInputElement).value).toBe("cluster0.abcde.mongodb.net");
+
+    await user.click(screen.getByText("Probar"));
+    expect(await screen.findByText("MongoDB 8.0.3")).toBeTruthy();
+    const tested = calls.filter((c) => c.cmd === "test_connection").pop();
+    expect(tested?.args.profile).toMatchObject({
+      engine: "mongodb",
+      host: "cluster0.abcde.mongodb.net",
+      user: "ana",
+      sslMode: "verify",
+      mongo: { srv: true, authSource: "admin" },
+    });
+
+    await user.click(screen.getByText("Guardar"));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "save_profile")).toBe(true));
+    const saved = calls.filter((c) => c.cmd === "save_profile").pop();
+    expect(saved?.args.profile).toMatchObject({ engine: "mongodb", database: "ventas" });
+  });
+
+  it("al editar una conexión no se puede cambiar el motor ni pegar una cadena de otro", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("dev_erp");
+    await user.hover(screen.getByText("dev_erp"));
+    await user.click(screen.getByTitle("Editar"));
+    await screen.findByText("Editar conexión");
+    expect(screen.queryByRole("radiogroup", { name: "Motor" })).toBeNull();
+
+    fireEvent.paste(screen.getByPlaceholderText(/postgresql:\/\/usuario:clave@host:5432/), {
+      clipboardData: { getData: () => "mongodb://h/db" },
+    });
+    expect(await screen.findByText(/es de PostgreSQL; la cadena es de otro motor/)).toBeTruthy();
   });
 });

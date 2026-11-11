@@ -653,3 +653,25 @@ select.small {
   color: var(--text);
   word-break: break-all;
 }
+
+.engine-pick {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.engine-pick button {
+  border: none;
+  background: transparent;
+  padding: 4px 14px;
+  border-radius: 6px;
+  color: var(--text-soft);
+}
+.engine-pick button.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
