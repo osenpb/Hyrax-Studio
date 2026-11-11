@@ -125,7 +125,120 @@ export interface TablePage {
   elapsedMs: number;
 }
 
+export type ObjectKind = RelationKind | "sequence" | "function" | "procedure";
+
+export interface ObjectRef {
+  schema: string;
+  name: string;
+  kind: ObjectKind;
+  detail: string | null;
+  oid: number;
+}
+
+export interface StructColumn {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  default: string | null;
+  isPrimaryKey: boolean;
+  identity: string | null;
+  generated: boolean;
+  collation: string | null;
+  comment: string | null;
+}
+
+export interface IndexInfo {
+  name: string;
+  definition: string;
+  unique: boolean;
+  primary: boolean;
+  valid: boolean;
+  sizeBytes: number;
+  backsConstraint: boolean;
+}
+
+export interface ConstraintInfo {
+  name: string;
+  kind: "primary" | "unique" | "foreign" | "check" | "exclusion";
+  definition: string;
+  validated: boolean;
+}
+
+export interface ForeignKey {
+  name: string;
+  schema: string;
+  table: string;
+  columns: string[];
+  refSchema: string;
+  refTable: string;
+  refColumns: string[];
+  onUpdate: string;
+  onDelete: string;
+}
+
+export interface TriggerInfo {
+  name: string;
+  definition: string;
+  enabled: boolean;
+}
+
+export interface TableStats {
+  estimatedRows: number | null;
+  totalBytes: number | null;
+  tableBytes: number | null;
+  indexBytes: number | null;
+  deadTuples: number | null;
+  lastVacuum: string | null;
+  lastAnalyze: string | null;
+  seqScans: number | null;
+  idxScans: number | null;
+}
+
+export interface TableStructure {
+  kind: RelationKind;
+  comment: string | null;
+  columns: StructColumn[];
+  indexes: IndexInfo[];
+  constraints: ConstraintInfo[];
+  foreignKeys: ForeignKey[];
+  referencedBy: ForeignKey[];
+  triggers: TriggerInfo[];
+  stats: TableStats;
+}
+
+export interface ImportResult {
+  inserted: number;
+  rolledBack: boolean;
+}
+
+export interface FileContent {
+  path: string;
+  name: string;
+  content: string;
+}
+
 export const api = {
+  dropObject: (id: string, schema: string, name: string, kind: RelationKind, cascade: boolean, confirm: string) =>
+    invoke<string>("drop_object", { id, schema, name, kind, cascade, confirm }),
+  dropDatabase: (id: string, database: string, force: boolean, confirm: string) =>
+    invoke<string>("drop_database", { id, database, force, confirm }),
+  searchObjects: (id: string) => invoke<ObjectRef[]>("search_objects", { id }),
+  tableStructure: (id: string, schema: string, table: string) =>
+    invoke<TableStructure>("table_structure", { id, schema, table }),
+  objectDdl: (id: string, schema: string, name: string, kind: ObjectKind, oid: number | null) =>
+    invoke<string>("object_ddl", { id, schema, name, kind, oid }),
+  completionFks: (id: string) => invoke<ForeignKey[]>("completion_fks", { id }),
+  importRows: (
+    id: string,
+    schema: string,
+    table: string,
+    columns: string[],
+    rows: (string | null)[][],
+    dryRun: boolean,
+  ) => invoke<ImportResult>("import_rows", { id, schema, table, columns, rows, dryRun }),
+  openTextFile: (kind: "sql" | "data") => invoke<FileContent | null>("open_text_file", { kind }),
+  saveTextFile: (content: string, defaultName: string, path: string | null) =>
+    invoke<FileContent | null>("save_text_file", { content, defaultName, path }),
   listProfiles: () => invoke<ConnectionProfile[]>("list_profiles"),
   saveProfile: (profile: ConnectionProfile) => invoke<void>("save_profile", { profile }),
   deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),

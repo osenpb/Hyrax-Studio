@@ -1,27 +1,60 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   databaseOfSession,
   errorText,
   profileOfSession,
+  type ColumnFilter,
   type ConnectionProfile,
+  type ObjectKind,
+  type ObjectRef,
+  type ResultSet,
   type SessionInfo,
 } from "./api";
 import Sidebar from "./components/Sidebar";
 import ConnectionDialog from "./components/ConnectionDialog";
 import TableTab from "./components/TableTab";
 import SqlTab from "./components/SqlTab";
-import Icon from "./components/Icon";
+import DdlView from "./components/DdlView";
+import Palette, { type PaletteItem } from "./components/Palette";
+import CompareDialog, { type Pin } from "./components/CompareDialog";
+import Icon, { type IconName } from "./components/Icon";
 import { clearHistory } from "./history";
+import { rank } from "./fuzzy";
 
 interface Tab {
   id: string;
-  kind: "table" | "sql";
+  kind: "table" | "sql" | "ddl";
   connId: string;
   title: string;
   schema?: string;
   table?: string;
+  filters?: ColumnFilter[];
+  ddl?: { kind: ObjectKind; oid: number | null };
+  initialSql?: string;
 }
+
+const MAX_PINS = 8;
+
+const KIND_ICON: Record<ObjectKind, IconName> = {
+  table: "table",
+  view: "view",
+  matview: "matview",
+  foreign: "foreign",
+  sequence: "sequence",
+  function: "func",
+  procedure: "func",
+};
+
+const KIND_LABEL: Record<ObjectKind, string> = {
+  table: "tabla",
+  view: "vista",
+  matview: "vista materializada",
+  foreign: "tabla foránea",
+  sequence: "secuencia",
+  function: "función",
+  procedure: "procedimiento",
+};
 
 const WRITE_WINDOW_MS = 10 * 60 * 1000;
 
@@ -47,7 +80,14 @@ export default function App() {
   const [banner, setBanner] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [theme, setTheme] = useState<Theme>(loadTheme);
+  const [palette, setPalette] = useState<"objects" | "commands" | null>(null);
+  const [objects, setObjects] = useState<Record<string, ObjectRef[]>>({});
+  const [objectsStatus, setObjectsStatus] = useState<string | null>(null);
+  const [pins, setPins] = useState<Pin[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const sqlCounter = useRef(0);
+  const pinCounter = useRef(0);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -130,6 +170,13 @@ export default function App() {
     });
   };
 
+  const closeTabsWhere = (predicate: (t: Tab) => boolean) => {
+    const closing = new Set(tabs.filter(predicate).map((t) => t.id));
+    if (closing.size === 0) return;
+    setTabs((prev) => prev.filter((t) => !closing.has(t.id)));
+    setActiveTab((cur) => (cur && closing.has(cur) ? null : cur));
+  };
+
   const forgetSessions = (profileId: string) =>
     setConnected((prev) =>
       Object.fromEntries(Object.entries(prev).filter(([key]) => profileOfSession(key) !== profileId)),
@@ -141,22 +188,55 @@ export default function App() {
     closeTabsOf(profileId);
   };
 
-  const openTable = (connId: string, schema: string, table: string) => {
-    const id = `t:${connId}:${schema}.${table}`;
+  const openTable = (connId: string, schema: string, table: string, filters?: ColumnFilter[]) => {
+    const filtered = filters && filters.length > 0 ? filters : undefined;
+    const id = `t:${connId}:${schema}.${table}` + (filtered ? `:${JSON.stringify(filtered)}` : "");
+    const title = filtered
+      ? `${table} · ${filtered.map((f) => `${f.column}=${f.value}`).join(", ")}`.slice(0, 44)
+      : table;
     setTabs((prev) =>
       prev.some((t) => t.id === id)
         ? prev
-        : [...prev, { id, kind: "table", connId, schema, table, title: table }],
+        : [...prev, { id, kind: "table", connId, schema, table, title, filters: filtered }],
     );
     setActiveTab(id);
   };
 
-  const openSql = (connId: string) => {
+  const openSql = (connId: string, initialSql?: string) => {
     sqlCounter.current += 1;
     const id = `q:${sqlCounter.current}`;
-    setTabs((prev) => [...prev, { id, kind: "sql", connId, title: `SQL ${sqlCounter.current}` }]);
+    setTabs((prev) => [
+      ...prev,
+      { id, kind: "sql", connId, title: `SQL ${sqlCounter.current}`, initialSql },
+    ]);
     setActiveTab(id);
   };
+
+  const openDdl = (connId: string, schema: string, name: string, kind: ObjectKind, oid: number | null = null) => {
+    const id = `d:${connId}:${schema}.${name}:${oid ?? ""}`;
+    setTabs((prev) =>
+      prev.some((t) => t.id === id)
+        ? prev
+        : [...prev, { id, kind: "ddl", connId, schema, table: name, title: `DDL ${name}`, ddl: { kind, oid } }],
+    );
+    setActiveTab(id);
+  };
+
+  const renameTab = (id: string, title: string) =>
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
+
+  const pinResult = (label: string, result: ResultSet) => {
+    pinCounter.current += 1;
+    const pin: Pin = { id: pinCounter.current, label, result, at: Date.now() };
+    setPins((prev) => [...prev, pin].slice(-MAX_PINS));
+    setNote(`Resultado fijado: ${label}. Usa «Comparar» para ver las diferencias con otro.`);
+  };
+
+  useEffect(() => {
+    if (!note) return;
+    const timer = setTimeout(() => setNote(null), 6000);
+    return () => clearTimeout(timer);
+  }, [note]);
 
   const closeTab = (id: string) => {
     const index = tabs.findIndex((t) => t.id === id);
@@ -198,6 +278,131 @@ export default function App() {
 
   const cycleTheme = () => setTheme((t) => (t === "auto" ? "dark" : t === "dark" ? "light" : "auto"));
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key === "n" && !e.shiftKey) {
+        e.preventDefault();
+        setPalette("objects");
+      } else if (key === "a" && e.shiftKey) {
+        e.preventDefault();
+        setPalette("commands");
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  useEffect(() => {
+    if (palette !== "objects" || !sqlTarget) return;
+    let cancelled = false;
+    setObjectsStatus("Cargando objetos…");
+    api
+      .searchObjects(sqlTarget)
+      .then((list) => {
+        if (cancelled) return;
+        setObjects((prev) => ({ ...prev, [sqlTarget]: list }));
+        setObjectsStatus(null);
+      })
+      .catch((e) => !cancelled && setObjectsStatus(errorText(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [palette, sqlTarget]);
+
+  const objectList = sqlTarget ? (objects[sqlTarget] ?? []) : [];
+  const objectByKey = useMemo(() => {
+    const map = new Map<string, ObjectRef>();
+    for (const o of objectList) map.set(`${o.kind}:${o.schema}.${o.name}:${o.oid}`, o);
+    return map;
+  }, [objectList]);
+
+  const searchObjects = useCallback(
+    (query: string): PaletteItem[] =>
+      rank(objectList, query, (o) => [o.name, `${o.schema}.${o.name}`], 60).map((o) => ({
+        key: `${o.kind}:${o.schema}.${o.name}:${o.oid}`,
+        label: o.kind === "function" || o.kind === "procedure" ? `${o.name}(${o.detail ?? ""})` : o.name,
+        detail: `${o.schema} · ${KIND_LABEL[o.kind]}`,
+        icon: <Icon name={KIND_ICON[o.kind]} size={14} className={"ic-" + o.kind} />,
+      })),
+    [objectList],
+  );
+
+  const pickObject = (item: PaletteItem, alternate: boolean) => {
+    const o = objectByKey.get(item.key);
+    if (!o || !sqlTarget) return;
+    setPalette(null);
+    const openable = o.kind === "table" || o.kind === "view" || o.kind === "matview" || o.kind === "foreign";
+    if (openable && !alternate) openTable(sqlTarget, o.schema, o.name);
+    else openDdl(sqlTarget, o.schema, o.name, o.kind, o.oid);
+  };
+
+  const activeTabInfo = tabs.find((t) => t.id === activeTab) ?? null;
+
+  const commands = useMemo(() => {
+    const list: (PaletteItem & { run: () => void })[] = [
+      {
+        key: "goto",
+        label: "Ir a tabla, vista o función…",
+        detail: "Ctrl+N",
+        icon: <Icon name="search" size={14} />,
+        disabled: !sqlTarget,
+        run: () => setPalette("objects"),
+      },
+      {
+        key: "sql",
+        label: "Nuevo editor SQL",
+        detail: sqlTarget ? nameOf(sqlTarget) : "conéctate primero",
+        icon: <Icon name="terminal" size={14} />,
+        disabled: !sqlTarget,
+        run: () => sqlTarget && openSql(sqlTarget),
+      },
+      {
+        key: "compare",
+        label: "Comparar resultados fijados…",
+        detail: `${pins.length} fijados`,
+        icon: <Icon name="compare" size={14} />,
+        run: () => setCompareOpen(true),
+      },
+      {
+        key: "ddl",
+        label: "Ver DDL de la tabla abierta",
+        detail: activeTabInfo?.kind === "table" ? `${activeTabInfo.schema}.${activeTabInfo.table}` : "abre una tabla",
+        icon: <Icon name="code" size={14} />,
+        disabled: activeTabInfo?.kind !== "table",
+        run: () =>
+          activeTabInfo?.kind === "table" &&
+          openDdl(activeTabInfo.connId, activeTabInfo.schema!, activeTabInfo.table!, "table"),
+      },
+      {
+        key: "close",
+        label: "Cerrar la pestaña actual",
+        icon: <Icon name="close" size={14} />,
+        disabled: !activeTabInfo,
+        run: () => activeTabInfo && closeTab(activeTabInfo.id),
+      },
+      {
+        key: "theme",
+        label: "Cambiar tema (automático, oscuro, claro)",
+        icon: <Icon name="moon" size={14} />,
+        run: cycleTheme,
+      },
+      {
+        key: "new-connection",
+        label: "Nueva conexión…",
+        icon: <Icon name="plus" size={14} />,
+        run: () => setDialog({ profile: null }),
+      },
+    ];
+    return list;
+  }, [sqlTarget, pins.length, activeTabInfo, profiles, tabs]);
+
+  const searchCommands = useCallback(
+    (query: string): PaletteItem[] => rank(commands, query, (c) => [c.label], 30),
+    [commands],
+  );
+
   return (
     <div className="app" style={{ gridTemplateColumns: `${sidebarWidth}px 4px 1fr` }}>
       <Sidebar
@@ -212,11 +417,38 @@ export default function App() {
         onNew={() => setDialog({ profile: null })}
         onEdit={(profile) => setDialog({ profile })}
         onDelete={setToDelete}
-        onOpenSql={openSql}
-        onOpenTable={openTable}
+        onOpenSql={(connId, sql) => openSql(connId, sql)}
+        onSetReadOnly={changeReadOnly}
+        onObjectDropped={(connId, schema, name) =>
+          closeTabsWhere(
+            (t) =>
+              t.connId === connId &&
+              t.schema === schema &&
+              t.table === name &&
+              (t.kind === "table" || t.kind === "ddl"),
+          )
+        }
+        onDatabaseDropped={(profileId, database) => {
+          const key = `${profileId}::${database}`;
+          setConnected((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)));
+          closeTabsWhere((t) => t.connId === key);
+          setSelectedConn((cur) => (cur === key ? null : cur));
+          setNote(`Base de datos ${database} eliminada.`);
+        }}
+        onOpenTable={(connId, schema, table) => openTable(connId, schema, table)}
+        onOpenDdl={openDdl}
       />
       <div className="resizer" onMouseDown={startResize} />
       <main className="main">
+        {note && (
+          <div className="alert alert-ok banner">
+            <Icon name="pin" size={15} />
+            <span>{note}</span>
+            <button className="ghost icon-btn" onClick={() => setNote(null)} title="Cerrar">
+              <Icon name="close" />
+            </button>
+          </div>
+        )}
         {banner && (
           <div className="alert alert-error banner">
             <Icon name="alert" size={15} />
@@ -234,7 +466,10 @@ export default function App() {
               onClick={() => setActiveTab(t.id)}
               title={t.kind === "table" ? `${nameOf(t.connId)} · ${t.schema}.${t.table}` : nameOf(t.connId)}
             >
-              <Icon name={t.kind === "sql" ? "terminal" : "table"} className={t.kind === "sql" ? "ic-sql" : "ic-table"} />
+              <Icon
+                name={t.kind === "sql" ? "terminal" : t.kind === "ddl" ? "code" : "table"}
+                className={t.kind === "sql" ? "ic-sql" : t.kind === "ddl" ? "ic-ddl" : "ic-table"}
+              />
               <span className="tab-title">{t.title}</span>
               <button
                 className="ghost icon-btn tab-close"
@@ -249,6 +484,11 @@ export default function App() {
             </div>
           ))}
           <span className="spacer" />
+          {pins.length > 0 && (
+            <button className="new-sql" onClick={() => setCompareOpen(true)} title="Comparar resultados fijados">
+              <Icon name="compare" size={13} /> Comparar ({pins.length})
+            </button>
+          )}
           <button
             className="new-sql"
             disabled={!sqlTarget}
@@ -287,23 +527,81 @@ export default function App() {
                   connId={t.connId}
                   schema={t.schema!}
                   table={t.table!}
+                  initialFilters={t.filters}
                   readOnly={connected[t.connId]?.readOnly ?? true}
                   production={isProduction(t.connId)}
                   onSetReadOnly={(enabled, confirm) => changeReadOnly(t.connId, enabled, confirm)}
+                  onOpenTable={(schema, table, filters) => openTable(t.connId, schema, table, filters)}
+                  onOpenInSql={(sql) => openSql(t.connId, sql)}
+                  onPin={pinResult}
                 />
+              ) : t.kind === "ddl" ? (
+                <div className={"tab-body" + (isProduction(t.connId) ? " is-prod" : "")}>
+                  <DdlView
+                    connId={t.connId}
+                    schema={t.schema!}
+                    name={t.table!}
+                    kind={t.ddl!.kind}
+                    oid={t.ddl!.oid}
+                    onOpenInSql={(sql) => openSql(t.connId, sql)}
+                  />
+                </div>
               ) : (
                 <SqlTab
                   connId={t.connId}
                   connName={nameOf(t.connId)}
                   readOnly={connected[t.connId]?.readOnly ?? true}
                   production={isProduction(t.connId)}
+                  initialSql={t.initialSql}
                   onSetReadOnly={(enabled, confirm) => changeReadOnly(t.connId, enabled, confirm)}
+                  onTitle={(title) => renameTab(t.id, title)}
+                  onPin={pinResult}
                 />
               )}
             </div>
           ))}
         </div>
       </main>
+
+      {palette === "objects" && (
+        <Palette
+          title="Ir a objeto"
+          placeholder={sqlTarget ? `Buscar en ${nameOf(sqlTarget)}: tablas, vistas, funciones…` : "Conéctate a una base primero"}
+          search={searchObjects}
+          version={objectList}
+          status={
+            !sqlTarget
+              ? "Conéctate a una base de datos para buscar sus objetos."
+              : objectList.length === 0
+                ? objectsStatus
+                : null
+          }
+          hint="Enter abre · Ctrl+Enter abre el DDL · Esc cierra"
+          onPick={pickObject}
+          onClose={() => setPalette(null)}
+        />
+      )}
+      {palette === "commands" && (
+        <Palette
+          title="Comandos"
+          placeholder="Escribe un comando…"
+          search={searchCommands}
+          version={commands}
+          hint="Enter ejecuta · Esc cierra"
+          onPick={(item) => {
+            setPalette(null);
+            commands.find((c) => c.key === item.key)?.run();
+          }}
+          onClose={() => setPalette(null)}
+        />
+      )}
+      {compareOpen && (
+        <CompareDialog
+          pins={pins}
+          onRemove={(id) => setPins((prev) => prev.filter((p) => p.id !== id))}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
 
       {dialog && (
         <ConnectionDialog initial={dialog.profile} onSave={saveProfile} onClose={() => setDialog(null)} />

@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { InsertValue, ResultSet, SortKey } from "../api";
 import { copyText, toJsonRows, toTsv, tryParseJson } from "../clipboard";
 import Icon from "./Icon";
+import RowForm from "./RowForm";
+
+export const ROW_HEIGHT = 25;
+const OVERSCAN = 15;
+export const VIRTUAL_MIN = 150;
+const ROWNUM_WIDTH = 64;
+const FALLBACK_VIEWPORT = 600;
 
 export interface GridEdit {
   enabled: boolean;
@@ -24,6 +31,11 @@ interface Props {
   onFilterChange?: (column: string, value: string) => void;
   selectionActions?: (rows: number[]) => ReactNode;
   edit?: GridEdit;
+  /** Tipo de cada columna, para mostrar JSON y arreglos de forma adecuada en la vista de fila. */
+  columnTypes?: Record<string, string>;
+  /** Columnas que forman parte de una clave foránea y permiten ir al registro relacionado. */
+  fkColumns?: Set<string>;
+  onFollow?: (rowIndex: number, column: string) => void;
 }
 
 const NUMERIC = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
@@ -116,6 +128,9 @@ export default function ResultGrid({
   onFilterChange,
   selectionActions,
   edit,
+  columnTypes,
+  fkColumns,
+  onFollow,
 }: Props) {
   const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
   const [rows, setRows] = useState<Set<number>>(new Set());
@@ -123,14 +138,49 @@ export default function ResultGrid({
   const [jsonRaw, setJsonRaw] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(null);
+  const [formRow, setFormRow] = useState<number | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewport, setViewport] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const scroller = useRef<HTMLDivElement>(null);
+  const empty = result.columns.length === 0;
+  const virtual = result.rows.length > VIRTUAL_MIN;
 
   useEffect(() => {
     setRows(new Set());
     setAnchor(null);
     setSelected(null);
     setEditing(null);
+    setFormRow(null);
   }, [result]);
+
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    setViewport(el.clientHeight);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setViewport(el.clientHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [empty]);
+
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+    setScrollTop(0);
+  }, [rowOffset]);
+
+  const widths = useMemo(() => {
+    if (!virtual) return null;
+    return result.columns.map((name, c) => {
+      let longest = name.length + 4;
+      for (const row of result.rows) {
+        const v = row[c];
+        const length = v === null ? 4 : Math.min(v.length, 60);
+        if (length > longest) longest = length;
+      }
+      return Math.min(440, Math.max(70, Math.round(longest * 7.4) + 28));
+    });
+  }, [result, virtual]);
 
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -192,7 +242,7 @@ export default function ResultGrid({
     }
   };
 
-  if (result.columns.length === 0) {
+  if (empty) {
     return (
       <div className="grid-empty">
         {result.affected !== null ? `Comando ejecutado. Filas afectadas: ${result.affected}` : "Sin resultado"}
@@ -201,6 +251,13 @@ export default function ResultGrid({
   }
 
   const pkSet = new Set(edit?.pkColumns ?? []);
+  const total = result.rows.length;
+  const first = virtual ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN) : 0;
+  const last = virtual
+    ? Math.min(total, Math.ceil((scrollTop + (viewport || FALLBACK_VIEWPORT)) / ROW_HEIGHT) + OVERSCAN)
+    : total;
+  const formKey = formRow !== null && edit ? edit.rowKey(result.rows[formRow] ?? []) : "";
+  const formDeleted = formRow !== null && (edit?.deletedKeys.has(formKey) ?? false);
 
   return (
     <div className="grid-wrap" tabIndex={0} onKeyDown={onKeyDown}>
@@ -215,6 +272,15 @@ export default function ResultGrid({
           <button className="small" onClick={() => void copyRows("json")}>
             <Icon name="copy" size={12} /> Copiar JSON
           </button>
+          {selectedList.length === 1 && (
+            <button
+              className="small"
+              onClick={() => setFormRow(selectedList[0])}
+              title="Ver y editar la fila como formulario: valores largos, JSON y arreglos"
+            >
+              <Icon name="form" size={12} /> Ver fila
+            </button>
+          )}
           {selectionActions?.(selectedList)}
           {copied && <span className="muted">{copied}</span>}
           <span className="spacer" />
@@ -223,8 +289,23 @@ export default function ResultGrid({
           </button>
         </div>
       )}
-      <div className="grid-scroll">
-        <table className="grid">
+      <div className="grid-scroll" ref={scroller} onScroll={virtual ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined}>
+        <table
+          className={"grid" + (virtual ? " virtual" : "")}
+          style={
+            widths
+              ? { tableLayout: "fixed", width: ROWNUM_WIDTH + widths.reduce((a, b) => a + b, 0) }
+              : undefined
+          }
+        >
+          {widths && (
+            <colgroup>
+              <col style={{ width: ROWNUM_WIDTH }} />
+              {widths.map((w, i) => (
+                <col key={i} style={{ width: w }} />
+              ))}
+            </colgroup>
+          )}
           <thead>
             <tr>
               <th className="rownum">#</th>
@@ -292,14 +373,20 @@ export default function ResultGrid({
                 ))}
               </tr>
             ))}
-            {result.rows.map((row, r) => {
+            {virtual && first > 0 && (
+              <tr className="spacer-row" aria-hidden="true">
+                <td colSpan={result.columns.length + 1} style={{ height: first * ROW_HEIGHT }} />
+              </tr>
+            )}
+            {result.rows.slice(first, last).map((row, offset) => {
+              const r = first + offset;
               const key = edit ? edit.rowKey(row) : "";
               const update = edit?.updates[key];
               const deleted = edit?.deletedKeys.has(key) ?? false;
               return (
                 <tr
                   key={r}
-                  className={(rows.has(r) ? "row-selected " : "") + (deleted ? "row-deleted" : "")}
+                  className={(r % 2 === 1 ? "alt " : "") + (rows.has(r) ? "row-selected " : "") + (deleted ? "row-deleted" : "")}
                 >
                   <td
                     className="rownum selectable"
@@ -336,12 +423,31 @@ export default function ResultGrid({
                         }}
                       >
                         {shown === null ? "NULL" : shown}
+                        {shown !== null && onFollow && fkColumns?.has(name) && (
+                          <button
+                            className="fk-follow"
+                            title="Ir al registro relacionado"
+                            aria-label={`Ir al registro relacionado de ${name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onFollow(r, name);
+                            }}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                          >
+                            <Icon name="goto" size={11} />
+                          </button>
+                        )}
                       </td>
                     );
                   })}
                 </tr>
               );
             })}
+            {virtual && last < total && (
+              <tr className="spacer-row" aria-hidden="true">
+                <td colSpan={result.columns.length + 1} style={{ height: (total - last) * ROW_HEIGHT }} />
+              </tr>
+            )}
           </tbody>
         </table>
         {result.rows.length === 0 && !edit?.inserts.length && <div className="grid-empty">Sin filas</div>}
@@ -383,6 +489,21 @@ export default function ResultGrid({
                 : cell}
           </pre>
         </div>
+      )}
+      {formRow !== null && result.rows[formRow] && (
+        <RowForm
+          columns={result.columns}
+          rows={result.rows}
+          index={formRow}
+          rowNumber={rowOffset + formRow + 1}
+          types={columnTypes}
+          pkColumns={edit?.pkColumns ?? []}
+          staged={edit?.updates[formKey]?.set ?? {}}
+          editable={(edit?.enabled ?? false) && !formDeleted}
+          onNavigate={setFormRow}
+          onStage={(r, c, v) => edit?.onEditCell(r, c, v)}
+          onClose={() => setFormRow(null)}
+        />
       )}
     </div>
   );

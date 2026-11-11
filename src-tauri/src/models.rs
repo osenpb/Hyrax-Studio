@@ -145,3 +145,113 @@ pub struct TablePage {
     pub estimated_rows: Option<i64>,
     pub elapsed_ms: u64,
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectRef {
+    pub schema: String,
+    pub name: String,
+    pub kind: String,
+    pub detail: Option<String>,
+    pub oid: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StructColumn {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub default: Option<String>,
+    pub is_primary_key: bool,
+    pub identity: Option<String>,
+    pub generated: bool,
+    pub collation: Option<String>,
+    pub comment: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexInfo {
+    pub name: String,
+    pub definition: String,
+    pub unique: bool,
+    pub primary: bool,
+    pub valid: bool,
+    pub size_bytes: i64,
+    pub backs_constraint: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConstraintInfo {
+    pub name: String,
+    pub kind: String,
+    pub definition: String,
+    pub validated: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKey {
+    pub name: String,
+    pub schema: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub ref_schema: String,
+    pub ref_table: String,
+    pub ref_columns: Vec<String>,
+    pub on_update: String,
+    pub on_delete: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerInfo {
+    pub name: String,
+    pub definition: String,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableStats {
+    pub estimated_rows: Option<i64>,
+    pub total_bytes: Option<i64>,
+    pub table_bytes: Option<i64>,
+    pub index_bytes: Option<i64>,
+    pub dead_tuples: Option<i64>,
+    pub last_vacuum: Option<String>,
+    pub last_analyze: Option<String>,
+    pub seq_scans: Option<i64>,
+    pub idx_scans: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableStructure {
+    pub kind: String,
+    pub comment: Option<String>,
+    pub columns: Vec<StructColumn>,
+    pub indexes: Vec<IndexInfo>,
+    pub constraints: Vec<ConstraintInfo>,
+    pub foreign_keys: Vec<ForeignKey>,
+    pub referenced_by: Vec<ForeignKey>,
+    pub triggers: Vec<TriggerInfo>,
+    pub stats: TableStats,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub inserted: u64,
+    pub rolled_back: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileContent {
+    pub path: String,
+    pub name: String,
+    pub content: String,
+}

@@ -99,6 +99,16 @@ const PATHS: Record<string, ReactNode> = {
       <path d="M20 20l-4.5-4.5" />
     </>
   ),
+  code: <path d="M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14" />,
+  pin: <path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7" />,
+  compare: <path d="M7 7h12l-4-4M17 17H5l4 4" />,
+  upload: <path d="M12 20V9M7 13l5-5 5 5M5 4h14" />,
+  file: <path d="M6 3h8l4 4v14H6zM14 3v4h4" />,
+  save: <path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" />,
+  form: <path d="M5 5h14M5 10h14M5 15h9M5 20h6" />,
+  goto: <path d="M5 12h14M13 6l6 6-6 6" />,
+  func: <path d="M9 4c-2 0-3 1-3 3v3H4m2 0v4c0 2-1 4-3 4M14 10l5 6m0-6l-5 6" />,
+  sequence: <path d="M5 7h3v10H5zM11 7h3M11 12h3M11 17h3M17 7h2v10h-2z" />,
 };
 
 const FILLED = new Set(["play", "stop"]);

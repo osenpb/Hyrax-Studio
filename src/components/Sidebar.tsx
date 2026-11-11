@@ -6,12 +6,37 @@ import {
   sessionKey,
   type ColumnInfo,
   type ConnectionProfile,
+  type ObjectKind,
   type RelationInfo,
   type RelationKind,
   type SchemaInfo,
   type SessionInfo,
 } from "../api";
 import Icon, { type IconName } from "./Icon";
+import ContextMenu, { type MenuItem } from "./ContextMenu";
+import DropDialog, { type DropRequest } from "./DropDialog";
+import { copyText } from "../clipboard";
+import { databaseOfSession } from "../api";
+
+const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;
+
+const NOUN: Record<RelationKind, string> = {
+  table: "la tabla",
+  view: "la vista",
+  matview: "la vista materializada",
+  foreign: "la tabla foránea",
+};
+
+const KEYWORD: Record<RelationKind, string> = {
+  table: "TABLE",
+  view: "VIEW",
+  matview: "MATERIALIZED VIEW",
+  foreign: "FOREIGN TABLE",
+};
+
+type DropTarget =
+  | { type: "object"; connId: string; schema: string; name: string; kind: RelationKind }
+  | { type: "database"; profile: ConnectionProfile; database: string };
 
 interface Props {
   profiles: ConnectionProfile[];
@@ -25,8 +50,12 @@ interface Props {
   onNew: () => void;
   onEdit: (profile: ConnectionProfile) => void;
   onDelete: (profile: ConnectionProfile) => void;
-  onOpenSql: (connId: string) => void;
+  onOpenSql: (connId: string, sql?: string) => void;
   onOpenTable: (connId: string, schema: string, table: string) => void;
+  onOpenDdl: (connId: string, schema: string, name: string, kind: ObjectKind) => void;
+  onSetReadOnly: (key: string, enabled: boolean, confirm?: string) => Promise<void>;
+  onObjectDropped: (connId: string, schema: string, name: string) => void;
+  onDatabaseDropped: (profileId: string, database: string) => void;
 }
 
 interface ConnCache {
@@ -59,6 +88,7 @@ interface RowProps {
   actions?: ReactNode;
   onClick?: () => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 function Row(p: RowProps) {
@@ -69,6 +99,7 @@ function Row(p: RowProps) {
       title={p.title}
       onClick={p.onClick}
       onDoubleClick={p.onDoubleClick}
+      onContextMenu={p.onContextMenu}
     >
       <span className={"chev" + (p.expanded ? " open" : "") + (p.expandable ? "" : " hidden")}>
         <Icon name="chevron" size={12} />
@@ -106,6 +137,84 @@ export default function Sidebar(props: Props) {
   const [databases, setDatabases] = useState<Record<string, string[]>>({});
   const [dbErrors, setDbErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [drop, setDrop] = useState<DropTarget | null>(null);
+
+  const openMenu = (e: React.MouseEvent, items: MenuItem[]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  };
+
+  const dropRequest = (target: DropTarget): { request: DropRequest; unlockKey: string | null } => {
+    if (target.type === "object") {
+      const production = profiles.find((p) => p.id === profileOfSession(target.connId))?.production ?? false;
+      return {
+        unlockKey: target.connId,
+        request: {
+          noun: NOUN[target.kind],
+          name: target.name,
+          display: `${target.schema}.${target.name}`,
+          sql: (cascade) =>
+            `DROP ${KEYWORD[target.kind]} ${quoteIdent(target.schema)}.${quoteIdent(target.name)}${cascade ? " CASCADE" : ""}`,
+          option: {
+            label: "CASCADE: eliminar también lo que dependa de ella",
+            help: "Vistas, claves foráneas de otras tablas, etc. Sin esto, si algo depende de ella, la operación falla y no se borra nada.",
+          },
+          readOnly: connected[target.connId]?.readOnly ?? true,
+          unlock: { database: databaseOfSession(target.connId), production },
+        },
+      };
+    }
+    const sessions = Object.entries(connected).filter(([k]) => profileOfSession(k) === target.profile.id);
+    const first = sessions[0];
+    return {
+      unlockKey: first ? first[0] : null,
+      request: {
+        noun: "la base de datos",
+        name: target.database,
+        display: target.database,
+        sql: (force) => `DROP DATABASE ${quoteIdent(target.database)}${force ? " WITH (FORCE)" : ""}`,
+        option: {
+          label: "Forzar: desconectar a quien esté usando la base",
+          help: "Cierra a la fuerza las demás conexiones a esa base (PostgreSQL 13 o superior). Sin esto, si alguien la usa, la operación falla.",
+        },
+        readOnly: !sessions.some(([, info]) => !info.readOnly),
+        unlock: first ? { database: databaseOfSession(first[0]), production: target.profile.production } : undefined,
+        lockedHint: "Conéctate a alguna base de este servidor para poder habilitar la escritura.",
+      },
+    };
+  };
+
+  const confirmDrop = async (target: DropTarget, option: boolean, typed: string) => {
+    if (target.type === "object") {
+      await api.dropObject(target.connId, target.schema, target.name, target.kind, option, typed);
+      setDrop(null);
+      setCache((prev) => {
+        const current = prev[target.connId];
+        if (!current) return prev;
+        const columns = { ...current.columns };
+        delete columns[JSON.stringify([target.schema, target.name])];
+        return { ...prev, [target.connId]: { ...current, columns } };
+      });
+      await loadRelations(target.connId, target.schema);
+      props.onObjectDropped(target.connId, target.schema, target.name);
+      return;
+    }
+    await api.dropDatabase(target.profile.id, target.database, option, typed);
+    setDrop(null);
+    const session = sessionKey(target.profile.id, target.database);
+    setCache((prev) => {
+      const next = { ...prev };
+      delete next[session];
+      return next;
+    });
+    setDatabases((prev) => ({
+      ...prev,
+      [target.profile.id]: (prev[target.profile.id] ?? []).filter((d) => d !== target.database),
+    }));
+    props.onDatabaseDropped(target.profile.id, target.database);
+  };
 
   const withBusy = async (id: string, work: () => Promise<void>) => {
     if (busy.has(id)) return;
@@ -328,10 +437,37 @@ export default function Sidebar(props: Props) {
           iconClass={"ic-" + rel.kind}
           expandable
           expanded={open}
-          title="Doble clic para abrir los datos"
+          title="Doble clic para abrir los datos · clic derecho para más acciones"
           onClick={() => clickTable(id, schema, rel.name)}
           onDoubleClick={() => props.onOpenTable(id, schema, rel.name)}
-          actions={<ActionButton title="Abrir datos" icon="open" onClick={() => props.onOpenTable(id, schema, rel.name)} />}
+          onContextMenu={(e) =>
+            openMenu(e, [
+              { key: "open", label: "Abrir datos", icon: <Icon name="open" size={13} />, onClick: () => props.onOpenTable(id, schema, rel.name) },
+              { key: "ddl", label: "Ver DDL", icon: <Icon name="code" size={13} />, onClick: () => props.onOpenDdl(id, schema, rel.name, rel.kind) },
+              {
+                key: "select",
+                label: "Nueva consulta SELECT",
+                icon: <Icon name="terminal" size={13} />,
+                onClick: () =>
+                  props.onOpenSql(id, `SELECT *\nFROM ${quoteIdent(schema)}.${quoteIdent(rel.name)}\nLIMIT 100;`),
+              },
+              { key: "copy", label: "Copiar nombre", icon: <Icon name="copy" size={13} />, onClick: () => void copyText(`${schema}.${rel.name}`) },
+              { key: "sep", label: "", separator: true },
+              {
+                key: "drop",
+                label: `Eliminar ${NOUN[rel.kind].replace(/^la /, "")}…`,
+                icon: <Icon name="trash" size={13} />,
+                danger: true,
+                onClick: () => setDrop({ type: "object", connId: id, schema, name: rel.name, kind: rel.kind }),
+              },
+            ])
+          }
+          actions={
+            <>
+              <ActionButton title="Ver DDL" icon="code" onClick={() => props.onOpenDdl(id, schema, rel.name, rel.kind)} />
+              <ActionButton title="Abrir datos" icon="open" onClick={() => props.onOpenTable(id, schema, rel.name)} />
+            </>
+          }
         />
         {open && !columns && <Row depth={5} label="Cargando…" muted />}
         {open &&
@@ -447,6 +583,25 @@ export default function Sidebar(props: Props) {
                         muted={!info}
                         title={info ? info.version : "Clic para conectar"}
                         onClick={() => clickDatabase(profile, database)}
+                        onContextMenu={(e) =>
+                          openMenu(e, [
+                            ...(info
+                              ? [
+                                  { key: "sql", label: "Nuevo editor SQL", icon: <Icon name="terminal" size={13} />, onClick: () => props.onOpenSql(session) },
+                                  { key: "reload", label: "Recargar schemas", icon: <Icon name="refresh" size={13} />, onClick: () => void loadSchemas(session) },
+                                ]
+                              : []),
+                            { key: "copy", label: "Copiar nombre", icon: <Icon name="copy" size={13} />, onClick: () => void copyText(database) },
+                            { key: "sep", label: "", separator: true },
+                            {
+                              key: "drop",
+                              label: "Eliminar base de datos…",
+                              icon: <Icon name="trash" size={13} />,
+                              danger: true,
+                              onClick: () => setDrop({ type: "database", profile, database }),
+                            },
+                          ])
+                        }
                         actions={
                           info ? (
                             <>
@@ -466,6 +621,21 @@ export default function Sidebar(props: Props) {
           );
         })}
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {drop &&
+        (() => {
+          const { request, unlockKey } = dropRequest(drop);
+          return (
+            <DropDialog
+              request={request}
+              onEnableWrite={async (confirm) => {
+                if (unlockKey) await props.onSetReadOnly(unlockKey, false, confirm);
+              }}
+              onConfirm={(option, typed) => confirmDrop(drop, option, typed)}
+              onClose={() => setDrop(null)}
+            />
+          );
+        })()}
     </aside>
   );
 }

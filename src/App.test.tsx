@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { EditorView } from "@codemirror/view";
 
 let holdRuns = false;
 let productionProfile = false;
@@ -10,7 +11,65 @@ let saveResult: string | null = "C:/tmp/export.csv";
 let failDatabases = false;
 let readOnlyState = true;
 let pendingRun: { resolve: (v: unknown) => void } | null = null;
+let planJson = false;
+let openedFile: { path: string; name: string; content: string } | null = null;
+let importError: string | null = null;
+let dropError: string | null = null;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
+
+const structureOf = (table: string) => ({
+  kind: "table",
+  comment: null,
+  columns: [
+    { name: "id", dataType: "bigint", nullable: false, default: null, isPrimaryKey: true, identity: null, generated: false, collation: null, comment: null },
+    { name: "total", dataType: "integer", nullable: true, default: null, isPrimaryKey: false, identity: null, generated: false, collation: null, comment: "monto" },
+    { name: "meta", dataType: "jsonb", nullable: true, default: null, isPrimaryKey: false, identity: null, generated: false, collation: null, comment: null },
+  ],
+  indexes: [
+    { name: `${table}_pkey`, definition: `CREATE UNIQUE INDEX ${table}_pkey ON public.${table} USING btree (id)`, unique: true, primary: true, valid: true, sizeBytes: 8192, backsConstraint: true },
+  ],
+  constraints: [{ name: `${table}_pkey`, kind: "primary", definition: "PRIMARY KEY (id)", validated: true }],
+  foreignKeys:
+    table === "orders"
+      ? [{ name: "orders_total_fk", schema: "public", table: "orders", columns: ["total"], refSchema: "public", refTable: "totals", refColumns: ["id"], onUpdate: "NO ACTION", onDelete: "CASCADE" }]
+      : [],
+  referencedBy:
+    table === "orders"
+      ? [{ name: "items_order_fk", schema: "public", table: "order_items", columns: ["order_id"], refSchema: "public", refTable: "orders", refColumns: ["id"], onUpdate: "NO ACTION", onDelete: "NO ACTION" }]
+      : [],
+  triggers: [],
+  stats: { estimatedRows: 1, totalBytes: 16384, tableBytes: 8192, indexBytes: 8192, deadTuples: 0, lastVacuum: null, lastAnalyze: null, seqScans: 3, idxScans: 9 },
+});
+
+const planResult = {
+  results: [
+    {
+      columns: ["QUERY PLAN"],
+      rows: [
+        [
+          JSON.stringify([
+            {
+              Plan: {
+                "Node Type": "Nested Loop",
+                "Total Cost": 100,
+                "Plan Rows": 10,
+                Plans: [
+                  { "Node Type": "Seq Scan", "Relation Name": "orders", "Total Cost": 90, "Plan Rows": 10 },
+                  { "Node Type": "Index Scan", "Relation Name": "customers", "Index Name": "customers_pkey", "Total Cost": 5, "Plan Rows": 1 },
+                ],
+              },
+            },
+          ]),
+        ],
+      ],
+      totalRows: 1,
+      truncated: false,
+      totalIsLowerBound: false,
+      affected: null,
+    },
+  ],
+  elapsedMs: 2,
+};
 
 const profile = {
   id: "p1",
@@ -74,6 +133,7 @@ vi.mock("@tauri-apps/api/core", () => ({
           });
         }
         const text = String(args.sql);
+        if (text.startsWith("EXPLAIN") && planJson) return planResult;
         if (text.startsWith("EXPLAIN")) {
           return {
             results: [
@@ -124,6 +184,31 @@ vi.mock("@tauri-apps/api/core", () => ({
           results: [{ columns: [], rows: [], totalRows: 0, truncated: false, totalIsLowerBound: false, affected: 1 }],
           elapsedMs: 2,
         };
+      case "search_objects":
+        return [
+          { schema: "public", name: "orders", kind: "table", detail: null, oid: 1 },
+          { schema: "public", name: "totals", kind: "table", detail: null, oid: 2 },
+          { schema: "public", name: "order_total", kind: "function", detail: "id bigint", oid: 3 },
+        ];
+      case "completion_fks":
+        return [];
+      case "table_structure":
+        return structureOf(String(args.table));
+      case "object_ddl":
+        return `CREATE TABLE "public"."${String(args.name)}" (\n    "id" bigint NOT NULL\n);\n`;
+      case "open_text_file":
+        return openedFile;
+      case "save_text_file":
+        return { path: "C:/scripts/consulta.sql", name: "consulta.sql", content: "" };
+      case "drop_object":
+        if (dropError) throw dropError;
+        return `DROP TABLE "${String(args.schema)}"."${String(args.name)}"`;
+      case "drop_database":
+        if (dropError) throw dropError;
+        return `DROP DATABASE "${String(args.database)}"`;
+      case "import_rows":
+        if (importError) throw importError;
+        return { inserted: (args.rows as unknown[]).length, rolledBack: args.dryRun === true };
       default:
         throw new Error("comando no simulado: " + cmd);
     }
@@ -150,6 +235,10 @@ beforeEach(() => {
   applyError = null;
   saveResult = "C:/tmp/export.csv";
   pendingRun = null;
+  planJson = false;
+  openedFile = null;
+  importError = null;
+  dropError = null;
   localStorage.clear();
 });
 afterEach(cleanup);
@@ -283,7 +372,7 @@ describe("navegador", () => {
     await user.click(await screen.findByText("Explicar"));
 
     const sent = calls.filter((c) => c.cmd === "run_sql").map((c) => String(c.args.sql));
-    expect(sent[sent.length - 1]).toBe("EXPLAIN SELECT 1");
+    expect(sent[sent.length - 1]).toBe("EXPLAIN (FORMAT JSON) SELECT 1");
     expect(await screen.findByText(/Seq Scan on orders/)).toBeTruthy();
     expect(screen.getByText("Plan de ejecución")).toBeTruthy();
   });
@@ -949,5 +1038,535 @@ describe("credenciales, TLS e historial", () => {
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "delete_profile")).toBe(true));
     await waitFor(() => expect(localStorage.getItem("pgdesk-history:p1")).toBeNull());
+  });
+});
+
+type User = ReturnType<typeof userEvent.setup>;
+
+async function connectAndOpenOrders(user: User) {
+  await user.click(await screen.findByText("dev_erp"));
+  await screen.findByText("erp_db");
+  await user.click(await screen.findByText("erp_db"));
+  await user.click(await screen.findByText("orders"));
+  await user.dblClick(screen.getByText("orders"));
+  await screen.findByText("Contar exacto");
+}
+
+function setEditor(text: string, cursor: number) {
+  const dom = document.querySelector(".cm-editor") as HTMLElement;
+  const view = EditorView.findFromDOM(dom)!;
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: cursor } });
+}
+
+describe("etapa 9: navegar el esquema", () => {
+  it("Ctrl+N abre la paleta de objetos, filtra y abre la tabla elegida", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText("dev_erp"));
+    await screen.findByText("erp_db");
+
+    await user.keyboard("{Control>}n{/Control}");
+    const search = await screen.findByRole("textbox", { name: "Ir a objeto" });
+    await screen.findByText("order_total(id bigint)");
+    await user.type(search, "tot");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      const open = calls.filter((c) => c.cmd === "table_data").pop();
+      expect(open?.args.table).toBe("totals");
+    });
+  });
+
+  it("Ctrl+Enter en la paleta abre el DDL y una función siempre abre su DDL", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText("dev_erp"));
+    await screen.findByText("erp_db");
+
+    await user.keyboard("{Control>}n{/Control}");
+    await user.type(await screen.findByRole("textbox", { name: "Ir a objeto" }), "order_total");
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      const ddl = calls.filter((c) => c.cmd === "object_ddl").pop();
+      expect(ddl?.args).toMatchObject({ name: "order_total", kind: "function", oid: 3 });
+    });
+    expect(await screen.findByText(/DDL de public\.order_total/)).toBeTruthy();
+  });
+
+  it("Ctrl+Mayús+A abre la paleta de comandos y ejecuta uno", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText("dev_erp"));
+    await screen.findByText("erp_db");
+
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByRole("textbox", { name: "Comandos" }), "nuevo editor");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Ejecutar todo")).toBeTruthy();
+  });
+
+  it("la pestaña Estructura muestra FKs, referencias, índices y estadísticas", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+    await user.click(screen.getByText("Estructura"));
+
+    expect(await screen.findByText("Claves foráneas (1)")).toBeTruthy();
+    expect(screen.getByText("orders_total_fk")).toBeTruthy();
+    expect(screen.getByText("public.totals (id)")).toBeTruthy();
+    expect(screen.getByText("Referenciada por (1)")).toBeTruthy();
+    expect(screen.getByText("public.order_items (order_id)")).toBeTruthy();
+    expect(screen.getByText("Índices (1)")).toBeTruthy();
+    expect(screen.getByText("monto")).toBeTruthy();
+    expect(screen.getByText("16.0 KB")).toBeTruthy();
+  });
+
+  it("la pestaña DDL pide el DDL de la tabla", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+    await user.click(screen.getByText("DDL"));
+    await waitFor(() => {
+      const ddl = calls.filter((c) => c.cmd === "object_ddl").pop();
+      expect(ddl?.args).toMatchObject({ schema: "public", name: "orders", kind: "table" });
+    });
+  });
+
+  it("de una clave foránea se llega al registro relacionado con el filtro correcto", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+
+    await user.click(await screen.findByLabelText("Ir al registro relacionado de total"));
+    await waitFor(() => {
+      const open = calls.filter((c) => c.cmd === "table_data").pop();
+      expect(open?.args.table).toBe("totals");
+      expect(open?.args.filters).toEqual([{ column: "id", op: "equals", value: "10" }]);
+    });
+    expect(await screen.findByDisplayValue("=10")).toBeTruthy();
+  });
+
+  it("desde una fila se ve quién la referencia y se abre esa tabla filtrada", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+    await user.click(await screen.findByTitle(/Clic: seleccionar fila/));
+
+    const select = await screen.findByLabelText("Ir a los registros que referencian esta fila");
+    await user.selectOptions(select, "0");
+    await waitFor(() => {
+      const open = calls.filter((c) => c.cmd === "table_data").pop();
+      expect(open?.args.table).toBe("order_items");
+      expect(open?.args.filters).toEqual([{ column: "order_id", op: "equals", value: "1" }]);
+    });
+  });
+});
+
+describe("etapa 10: consola SQL", () => {
+  async function openEditor(user: User) {
+    await user.click(await screen.findByText("dev_erp"));
+    await screen.findByText("erp_db");
+    await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
+    await screen.findByText("Ejecutar todo");
+  }
+
+  const lastSql = () =>
+    String(calls.filter((c) => c.cmd === "run_sql").pop()?.args.sql);
+
+  it("Ejecutar corre solo la sentencia donde está el cursor y Ejecutar todo corre el script", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditor(user);
+    const script = "SELECT 1;\n\nSELECT 2;\nSELECT 3;";
+    setEditor(script, script.indexOf("SELECT 2") + 3);
+
+    await user.click(screen.getByText("Ejecutar"));
+    await waitFor(() => expect(lastSql()).toBe("SELECT 2;"));
+
+    await user.click(screen.getByText("Ejecutar todo"));
+    await waitFor(() => expect(lastSql()).toBe(script));
+  });
+
+  it("los parámetros :nombre piden valores y se envían como literales escapados", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditor(user);
+    setEditor("SELECT * FROM orders WHERE id = :id AND note = :note", 5);
+
+    await user.click(screen.getByText("Ejecutar"));
+    const id = await screen.findByLabelText(":id");
+    await user.type(id, "7");
+    await user.type(screen.getByLabelText(":note"), "O'Brien");
+    await user.click(within(screen.getByRole("dialog", { name: "Parámetros" })).getByText("Ejecutar"));
+
+    await waitFor(() => expect(lastSql()).toBe("SELECT * FROM orders WHERE id = '7' AND note = 'O''Brien'"));
+  });
+
+  it("cancelar el diálogo de parámetros no ejecuta nada", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditor(user);
+    setEditor("SELECT :x", 3);
+    const before = calls.filter((c) => c.cmd === "run_sql").length;
+
+    await user.click(screen.getByText("Ejecutar"));
+    await screen.findByLabelText(":x");
+    await user.click(screen.getByText("Cancelar"));
+    expect(calls.filter((c) => c.cmd === "run_sql").length).toBe(before);
+  });
+
+  it("Explicar con JSON muestra el plan en árbol y resalta el nodo más costoso", async () => {
+    planJson = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditor(user);
+    await user.click(screen.getByText("Explicar"));
+
+    expect((await screen.findAllByText("Seq Scan en orders")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Index Scan en customers con customers_pkey")).toBeTruthy();
+    const worst = await screen.findByText(/Nodo más costoso:/);
+    expect(worst.textContent).toContain("Seq Scan en orders");
+    expect(document.querySelector(".plan-node.hot")).not.toBeNull();
+  });
+
+  it("abre un script .sql en el editor y lo guarda con el nombre elegido", async () => {
+    openedFile = { path: "C:/scripts/reporte.sql", name: "reporte.sql", content: "SELECT 42;" };
+    const user = userEvent.setup();
+    render(<App />);
+    await openEditor(user);
+
+    await user.click(screen.getByText("Abrir…"));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "open_text_file")).toBe(true));
+    await waitFor(() => {
+      const view = EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;
+      expect(view.state.doc.toString()).toBe("SELECT 42;");
+    });
+    expect(screen.getAllByText("reporte.sql").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByText("Guardar"));
+    await waitFor(() => {
+      const save = calls.filter((c) => c.cmd === "save_text_file").pop();
+      expect(save?.args).toMatchObject({ content: "SELECT 42;", defaultName: "reporte.sql", path: "C:/scripts/reporte.sql" });
+    });
+  });
+});
+
+describe("etapa 11: datos avanzados", () => {
+  it("la vista de fila muestra el JSON con formato y deja editar hacia los cambios pendientes", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+    await user.click(await screen.findByTitle(/Clic: seleccionar fila/));
+    await user.click(await screen.findByText("Ver fila"));
+
+    const meta = (await screen.findByLabelText(/^meta/)) as HTMLTextAreaElement;
+    expect(meta.value).toBe('{\n  "a": {\n    "b": 2\n  }\n}');
+    expect(screen.getByText("JSON")).toBeTruthy();
+    expect((screen.getByLabelText(/^id/) as HTMLTextAreaElement).readOnly).toBe(true);
+
+    await user.click(within(screen.getByRole("dialog", { name: "Fila como formulario" })).getByTitle("Cerrar"));
+    expect(screen.queryByRole("dialog", { name: "Fila como formulario" })).toBeNull();
+  });
+
+  it("en modo edición la vista de fila añade el cambio a los pendientes", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+    await user.click(await screen.findByText("Editar datos"));
+    await user.click(await screen.findByTitle(/Clic: seleccionar fila/));
+    await user.click(await screen.findByText("Ver fila"));
+
+    const total = (await screen.findByLabelText(/^total/)) as HTMLTextAreaElement;
+    await user.clear(total);
+    await user.type(total, "99");
+    await user.click(screen.getByText("Añadir a cambios pendientes"));
+
+    expect(await screen.findByText("1 cambio pendiente")).toBeTruthy();
+  });
+
+  it("importar: asigna columnas por nombre, ensaya con ROLLBACK e importa", async () => {
+    readOnlyState = false;
+    openedFile = { path: "C:/datos/pedidos.csv", name: "pedidos.csv", content: "id;total;nota\n1;10;x\n2;;y\n" };
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+
+    await user.click(screen.getByText("Importar…"));
+    await user.click(await screen.findByText("Elegir archivo…"));
+    expect(await screen.findByText(/2 filas · 3 columnas/)).toBeTruthy();
+    expect((screen.getByLabelText("Origen de id") as HTMLSelectElement).value).toBe("0");
+    expect((screen.getByLabelText("Origen de total") as HTMLSelectElement).value).toBe("1");
+    expect((screen.getByLabelText("Origen de meta") as HTMLSelectElement).value).toBe("");
+
+    await user.click(screen.getByText("Ensayar (ROLLBACK)"));
+    await screen.findByText(/Ensayo correcto: se insertarían 2 filas/);
+    const dry = calls.filter((c) => c.cmd === "import_rows").pop();
+    expect(dry?.args).toMatchObject({
+      schema: "public",
+      table: "orders",
+      columns: ["id", "total"],
+      rows: [["1", "10"], ["2", null]],
+      dryRun: true,
+    });
+
+    await user.click(screen.getByText("Importar 2 filas"));
+    await waitFor(() => expect(calls.filter((c) => c.cmd === "import_rows").pop()?.args.dryRun).toBe(false));
+    expect(await screen.findByText(/Se importaron 2 filas en una sola transacción/)).toBeTruthy();
+  });
+
+  it("importar muestra el error del servidor con el número de fila", async () => {
+    readOnlyState = false;
+    importError = "Fila 2: ERROR: invalid input syntax for type integer\nNo se importó nada.";
+    openedFile = { path: "C:/datos/p.json", name: "p.json", content: '[{"id":1,"total":"x"},{"id":2}]' };
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+
+    await user.click(screen.getByText("Importar…"));
+    await user.click(await screen.findByText("Elegir archivo…"));
+    await user.click(await screen.findByText("Ensayar (ROLLBACK)"));
+    expect(await screen.findByText(/Fila 2: ERROR/)).toBeTruthy();
+  });
+
+  it("importar exige escritura habilitada", async () => {
+    openedFile = { path: "C:/datos/p.csv", name: "p.csv", content: "id\n1\n" };
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+    await user.click(screen.getByText("Importar…"));
+    await user.click(await screen.findByText("Elegir archivo…"));
+    await screen.findByText(/solo lectura: habilita la escritura para ensayar o importar/);
+    expect((screen.getByText("Ensayar (ROLLBACK)") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("fijar dos resultados y compararlos muestra añadidas, eliminadas y modificadas", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+
+    await user.click(screen.getByText("Fijar"));
+    await screen.findByText(/Resultado fijado/);
+    await user.click(screen.getByText("Fijar"));
+    await user.click(await screen.findByText(/Comparar \(2\)/));
+
+    expect(await screen.findByText("Comparar resultados")).toBeTruthy();
+    expect(screen.getByText(/1 iguales/)).toBeTruthy();
+    expect(screen.getByText(/0 añadidas/)).toBeTruthy();
+  });
+
+  it("la edición sigue disponible con filtros activos y los cambios pendientes sobreviven al filtro", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    await connectAndOpenOrders(user);
+
+    await user.type(await screen.findByLabelText("Filtrar total"), ">5");
+    await waitFor(() => {
+      const last = calls.filter((c) => c.cmd === "table_data").pop();
+      expect(last?.args.filters).toEqual([{ column: "total", op: "gt", value: "5" }]);
+    });
+    const edit = screen.getByText("Editar datos").closest("button") as HTMLButtonElement;
+    expect(edit.disabled).toBe(false);
+    await user.click(edit);
+
+    await user.dblClick(await screen.findByText("10"));
+    const input = await screen.findByLabelText("Editar celda");
+    await user.clear(input);
+    await user.type(input, "11{Enter}");
+    expect(await screen.findByText("1 cambio pendiente")).toBeTruthy();
+
+    await user.click(screen.getByText(/Limpiar filtros/));
+    await waitFor(() => {
+      const last = calls.filter((c) => c.cmd === "table_data").pop();
+      expect(last?.args.filters).toEqual([]);
+    });
+    expect(screen.getByText("1 cambio pendiente")).toBeTruthy();
+  });
+
+  it("la rejilla virtualizada solo dibuja las filas visibles de un resultado grande", async () => {
+    const user = userEvent.setup();
+    const { default: ResultGrid } = await import("./components/ResultGrid");
+    const rows = Array.from({ length: 5000 }, (_, i) => [String(i + 1), `fila ${i + 1}`]);
+    render(
+      <ResultGrid
+        result={{ columns: ["id", "texto"], rows, totalRows: 5000, truncated: false, totalIsLowerBound: false, affected: null }}
+      />,
+    );
+    const rendered = document.querySelectorAll("tbody tr:not(.spacer-row)").length;
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered).toBeLessThan(120);
+    expect(document.querySelector(".spacer-row")).not.toBeNull();
+    expect(screen.queryByText("fila 4000")).toBeNull();
+    void user;
+  });
+
+  it("un resultado pequeño no se virtualiza", async () => {
+    const { default: ResultGrid } = await import("./components/ResultGrid");
+    const rows = Array.from({ length: 50 }, (_, i) => [String(i + 1)]);
+    render(
+      <ResultGrid
+        result={{ columns: ["id"], rows, totalRows: 50, truncated: false, totalIsLowerBound: false, affected: null }}
+      />,
+    );
+    expect(document.querySelectorAll("tbody tr").length).toBe(50);
+    expect(document.querySelector(".spacer-row")).toBeNull();
+  });
+});
+
+describe("menú contextual y eliminar", () => {
+  async function showOrders(user: User) {
+    await user.click(await screen.findByText("dev_erp"));
+    await screen.findByText("erp_db");
+    await user.click(await screen.findByText("erp_db"));
+    return screen.findByText("orders");
+  }
+
+  const dialog = () => screen.getByRole("dialog", { name: "Confirmar eliminación" });
+  const dropButton = () => within(dialog()).getByRole("button", { name: "Eliminar" }) as HTMLButtonElement;
+
+  it("clic derecho en una tabla ofrece las acciones, y Escape cierra el menú", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    fireEvent.contextMenu(await showOrders(user));
+
+    const menu = await screen.findByRole("menu");
+    const labels = within(menu).getAllByRole("menuitem").map((i) => i.textContent?.trim());
+    expect(labels).toEqual(["Abrir datos", "Ver DDL", "Nueva consulta SELECT", "Copiar nombre", "Eliminar tabla…"]);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("«Nueva consulta SELECT» abre un editor con la consulta lista", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    fireEvent.contextMenu(await showOrders(user));
+    await user.click(await screen.findByRole("menuitem", { name: /Nueva consulta SELECT/ }));
+
+    await screen.findByText("Ejecutar todo");
+    const view = EditorView.findFromDOM(document.querySelector(".cm-editor") as HTMLElement)!;
+    expect(view.state.doc.toString()).toBe('SELECT *\nFROM "public"."orders"\nLIMIT 100;');
+  });
+
+  it("eliminar una tabla exige habilitar la escritura y escribir su nombre exacto", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    fireEvent.contextMenu(await showOrders(user));
+    await user.click(await screen.findByRole("menuitem", { name: /Eliminar tabla/ }));
+
+    expect(dropButton().disabled).toBe(true);
+    expect(within(dialog()).getByText(/La escritura está deshabilitada/)).toBeTruthy();
+    expect(within(dialog()).getByText('DROP TABLE "public"."orders";')).toBeTruthy();
+
+    await user.click(within(dialog()).getByText("Habilitar escritura"));
+    await waitFor(() => expect(within(dialog()).queryByText(/La escritura está deshabilitada/)).toBeNull());
+    expect(dropButton().disabled).toBe(true);
+
+    const input = within(dialog()).getByLabelText("Escribe el nombre para confirmar");
+    await user.type(input, "Orders");
+    expect(dropButton().disabled).toBe(true);
+    await user.clear(input);
+    await user.type(input, "orders");
+    expect(dropButton().disabled).toBe(false);
+
+    const before = calls.filter((c) => c.cmd === "list_relations").length;
+    await user.click(dropButton());
+    await waitFor(() => {
+      const drop = calls.filter((c) => c.cmd === "drop_object").pop();
+      expect(drop?.args).toEqual({
+        id: "p1::erp_db",
+        schema: "public",
+        name: "orders",
+        kind: "table",
+        cascade: false,
+        confirm: "orders",
+      });
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Confirmar eliminación" })).toBeNull());
+    expect(calls.filter((c) => c.cmd === "list_relations").length).toBeGreaterThan(before);
+  });
+
+  it("CASCADE se pide aparte y se ve en el SQL antes de ejecutar", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    fireEvent.contextMenu(await showOrders(user));
+    await user.click(await screen.findByRole("menuitem", { name: /Eliminar tabla/ }));
+
+    await user.click(within(dialog()).getByRole("checkbox"));
+    expect(within(dialog()).getByText('DROP TABLE "public"."orders" CASCADE;')).toBeTruthy();
+    await user.type(within(dialog()).getByLabelText("Escribe el nombre para confirmar"), "orders");
+    await user.click(dropButton());
+    await waitFor(() => expect(calls.filter((c) => c.cmd === "drop_object").pop()?.args.cascade).toBe(true));
+  });
+
+  it("si el servidor rechaza la eliminación, el diálogo sigue abierto con el error", async () => {
+    readOnlyState = false;
+    dropError = 'ERROR: cannot drop table orders because other objects depend on it';
+    const user = userEvent.setup();
+    render(<App />);
+    fireEvent.contextMenu(await showOrders(user));
+    await user.click(await screen.findByRole("menuitem", { name: /Eliminar tabla/ }));
+    await user.type(within(dialog()).getByLabelText("Escribe el nombre para confirmar"), "orders");
+    await user.click(dropButton());
+
+    expect(await within(dialog()).findByText(/other objects depend on it/)).toBeTruthy();
+    expect(dropButton().disabled).toBe(false);
+  });
+
+  it("en producción, habilitar la escritura desde el diálogo pide el nombre de la base", async () => {
+    productionProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    fireEvent.contextMenu(await showOrders(user));
+    await user.click(await screen.findByRole("menuitem", { name: /Eliminar tabla/ }));
+
+    const enable = within(dialog()).getByText("Habilitar escritura") as HTMLButtonElement;
+    expect(enable.disabled).toBe(true);
+    await user.type(within(dialog()).getByLabelText("Nombre de la base erp_db"), "erp_db");
+    expect(enable.disabled).toBe(false);
+    await user.click(enable);
+    await waitFor(() => {
+      const set = calls.filter((c) => c.cmd === "set_read_only").pop();
+      expect(set?.args).toMatchObject({ id: "p1::erp_db", enabled: false, confirm: "erp_db" });
+    });
+  });
+
+  it("eliminar una base de datos pide el nombre y la saca del árbol", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByText("dev_erp"));
+    fireEvent.contextMenu(await screen.findByText("erp_db"));
+    await user.click(await screen.findByRole("menuitem", { name: /Eliminar base de datos/ }));
+
+    expect(within(dialog()).getByText('DROP DATABASE "erp_db";')).toBeTruthy();
+    expect(dropButton().disabled).toBe(true);
+    await user.type(within(dialog()).getByLabelText("Escribe el nombre para confirmar"), "erp_db");
+    await user.click(dropButton());
+
+    await waitFor(() => {
+      const drop = calls.filter((c) => c.cmd === "drop_database").pop();
+      expect(drop?.args).toEqual({ id: "p1", database: "erp_db", force: false, confirm: "erp_db" });
+    });
+    await waitFor(() => expect(screen.queryByText("erp_db")).toBeNull());
+    expect(await screen.findByText("Base de datos erp_db eliminada.")).toBeTruthy();
+  });
+
+  it("eliminar una tabla cierra sus pestañas abiertas", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    const orders = await showOrders(user);
+    await user.dblClick(orders);
+    await screen.findByText("Contar exacto");
+    fireEvent.contextMenu(screen.getAllByText("orders")[0]);
+    await user.click(await screen.findByRole("menuitem", { name: /Eliminar tabla/ }));
+    await user.type(within(dialog()).getByLabelText("Escribe el nombre para confirmar"), "orders");
+    await user.click(dropButton());
+
+    await waitFor(() => expect(screen.queryByText("Contar exacto")).toBeNull());
   });
 });

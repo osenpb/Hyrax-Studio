@@ -25,6 +25,34 @@ No se encontraron vulnerabilidades explotables en las dependencias ni inyección
 | S-13 | Aceptado | Quien controle tu sesión de Windows puede leer el Administrador de credenciales | Es el límite de confianza normal de cualquier cliente de bases de datos |
 | S-14 | Pendiente | Sin firma de código ni actualizaciones automáticas | Para la distribución pública |
 
+## Actualización (2026-11-11): etapas 9 a 11
+
+Superficie nueva y cómo se acotó. Esta actualización es una revisión del diseño y de las pruebas; no repite la auditoría de dependencias de S-10.
+
+| Función | Riesgo considerado | Control |
+|---|---|---|
+| Abrir y guardar scripts, abrir archivos para importar | Que la interfaz web leyera o escribiera rutas arbitrarias | Los diálogos se abren desde Rust y la ruta nunca viene de la interfaz. Solo se vuelve a guardar sobre rutas que el usuario eligió en un diálogo durante la sesión. Tamaño máximo (8 MB scripts, 64 MB datos) y UTF-8 obligatorio. No se añadió ningún permiso a la ventana |
+| Importar | Escribir datos sin querer o dejar la tabla a medias | Requiere escritura habilitada (y por tanto la confirmación de producción), toma el cerrojo de escritura de la sesión, valida columnas contra el catálogo, usa parámetros enlazados con el tipo sacado del catálogo, y todo ocurre en una transacción: un error revierte todo. «Ensayar» termina en `ROLLBACK`. Solo tablas (no vistas ni tablas del sistema). Máximo 200.000 filas por importación |
+| Parámetros `:nombre` | Inyección SQL por el valor | Se sustituyen como literales escapados (comillas duplicadas, `E'…'` con barras, NUL rechazado), con prueba de que `x'; DROP TABLE t; --` queda dentro de su literal. El aviso de sentencias peligrosas y el filtro de solo lectura se aplican al texto final. El valor lo escribe el propio usuario sobre su SQL, así que no abre un canal nuevo |
+| Estructura, DDL y búsqueda de objetos | Escritura o carga excesiva | Solo consultas de catálogo de lectura, válidas en sesiones de solo lectura. Tope de 20.000 objetos |
+| Ejecutar la sentencia del cursor | Ejecutar de más (o de menos) | Ctrl+Enter solo corre la sentencia actual o la selección, lo que reduce el riesgo de lanzar un script entero por descuido; «Ejecutar todo» es explícito y pasa por el mismo aviso de sentencias peligrosas |
+| Resultados fijados | Datos sensibles en memoria | Viven solo en memoria de la ventana (máximo 8) y se pierden al cerrar; no se guardan en disco |
+
+### Eliminar tablas, vistas y bases de datos (menú contextual)
+
+| Riesgo | Control |
+|---|---|
+| Eliminar algo por un clic equivocado | Acción solo desde el menú de clic derecho, nunca como botón visible. Diálogo que muestra el SQL exacto y exige **escribir el nombre completo**. El backend lo vuelve a exigir (`check_confirm`), aunque se llame al comando directamente |
+| Eliminar en una sesión de solo lectura | El backend rechaza si la sesión está en solo lectura. Para una base de datos exige que haya escritura habilitada en alguna base de ese servidor. Habilitarla desde el diálogo pasa por la misma confirmación de producción (escribir el nombre de la base) |
+| Borrar de más con `CASCADE` | Es una casilla aparte, apagada por defecto, y el SQL mostrado lo refleja. Sin ella, si algo depende del objeto, falla y no se borra nada |
+| Dejar un bloqueo colgado | `lock_timeout` de 5 s dentro de una transacción; si falla se revierte |
+| Inyección por el nombre | Identificadores con `quote_ident` (con prueba de un nombre malicioso). Solo se acepta un conjunto fijo de tipos de objeto; se rechazan los schemas del sistema y las bases plantilla |
+| Eliminar una base a la que uno mismo está conectado | PgDesk cierra su propia sesión a esa base y elimina desde una conexión de mantenimiento (`postgres`, o `template1` si se elimina `postgres`). Si hay otras conexiones ajenas, falla con un mensaje claro; «Forzar» (`WITH (FORCE)`, PostgreSQL 13+) las desconecta y es una casilla aparte |
+
+Esto **no** sustituye a la cuenta sin permisos de escritura: con una cuenta de solo lectura, el servidor rechaza todo esto de todos modos. Tampoco hay papelera ni deshacer: si no hay copia de seguridad, lo eliminado no vuelve.
+
+Riesgo residual nuevo: el contenido de un CSV/JSON importado se inserta tal cual; si contiene datos que el usuario no debería cargar, PgDesk no lo detecta. La vista previa y el ensayo existen para revisarlo antes.
+
 ## Controles que protegen en producción
 
 - Las conexiones nuevas abren en **solo lectura**. Habilitar la escritura exige confirmación; en una conexión marcada como **producción** hay que escribir el nombre de la base, y el servidor lo vuelve a comprobar.
@@ -33,7 +61,7 @@ No se encontraron vulnerabilidades explotables en las dependencias ni inyección
 - En el editor SQL: aviso antes de ejecutar `DELETE`/`UPDATE` sin `WHERE`, `TRUNCATE` o `DROP`, y un "Probar (ROLLBACK)" que ejecuta y revierte para ver el efecto sin guardar nada.
 - Tiempo máximo por consulta (60 s por defecto, 5 min como tope en producción), cancelación, y lecturas con tope de filas en memoria.
 - `EXPLAIN ANALYZE` (que ejecuta la consulta) solo está disponible en solo lectura.
-- Permisos mínimos de la ventana: solo el diálogo "guardar archivo". Sin acceso al sistema de archivos ni a la red desde la interfaz.
+- Permisos mínimos de la ventana: solo el diálogo "guardar archivo". Sin acceso al sistema de archivos ni a la red desde la interfaz (abrir y guardar scripts o datos pasa por comandos de Rust que abren su propio diálogo).
 
 ## Riesgos residuales y límites
 
@@ -73,6 +101,7 @@ ALTER ROLE pgdesk_ro SET idle_in_transaction_session_timeout = '30s';
 
 ## Cómo se verificó
 
-- Backend: 40 pruebas (unitarias y de integración contra Postgres reales: lecturas contra la base local, escrituras, TLS y caducidad contra una base desechable) y escaneo de dependencias.
-- Interfaz: 49 pruebas con backend simulado, repetidas varias veces para descartar fallos intermitentes.
+- Backend: 51 pruebas (31 unitarias y 20 de integración contra Postgres reales: lecturas, escrituras, TLS y caducidad contra una base desechable) y escaneo de dependencias. El 2026-11-11 se volvieron a correr las de integración (salvo las de TLS, que necesitan certificado) contra un PostgreSQL 17.5 desechable creado con `initdb` en una carpeta temporal.
+- Interfaz: 95 pruebas (70 con backend simulado y 25 de la lógica pura: sentencias, parámetros, plan, CSV/JSON, comparación, JOIN por FK).
+- Aplicación real (2026-11-11), con una configuración y un perfil de WebView aislados y la base desechable: Ctrl+N, salto por clave foránea en ambos sentidos, estructura y DDL, rejilla virtualizada (desplazamiento exacto y sin huecos con 200 filas cargadas), sentencia bajo el cursor, parámetros, plan con ANALYZE, JOIN sugerido por FK, buscar y reemplazar, vista de fila editando hasta aplicar en la base, comparación, y los comandos de importación y de archivos a través del puente real de Tauri (ensayo, importación, rechazo atómico de un duplicado). Los diálogos nativos de abrir y guardar no se pudieron automatizar: su lógica de rutas está probada con pruebas unitarias y no se vio el diálogo en pantalla.
 - Aplicación real: migración de credenciales, conexión TLS verificada, edición con aplicación real y comprobación en la base, confirmación de producción, rechazo del servidor ante intentos de saltársela, capturas de ambos temas y sondas de la CSP.

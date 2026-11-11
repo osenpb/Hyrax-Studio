@@ -803,7 +803,7 @@ button.toggled {
 .grid .sort {
   color: var(--accent);
 }
-.grid tbody tr:nth-child(even) td:not(.rownum) {
+.grid tbody tr.alt td:not(.rownum) {
   background: var(--zebra);
 }
 .grid tbody tr:hover td:not(.selected) {

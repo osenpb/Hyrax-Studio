@@ -1,0 +1,640 @@
+/* Etapas 9 a 11: navegación del esquema, consola SQL, datos avanzados. */
+
+/* Sin ligaduras: Cascadia Code dibuja `>=` como «≥» y `<>` como «≠», y en SQL eso confunde. */
+body,
+.cm-editor,
+pre,
+code,
+.grid {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+.ic-ddl,
+.ic-function,
+.ic-procedure {
+  color: var(--tok-type);
+}
+.ic-sequence {
+  color: var(--warn);
+}
+.ic-fk {
+  color: var(--accent);
+}
+
+/* Rejilla virtualizada: filas de altura fija para poder calcular qué filas se ven. */
+.grid.virtual tbody td {
+  height: 25px;
+  line-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+.grid .spacer-row td {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.fk-follow {
+  margin-left: 8px;
+  padding: 0 4px;
+  height: 16px;
+  line-height: 14px;
+  vertical-align: middle;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.fk-follow:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+select.small {
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
+/* Panel de buscar y reemplazar de CodeMirror: compacto, en una o dos líneas. */
+.cm-editor .cm-search {
+  gap: 4px 8px;
+}
+.cm-editor .cm-search input.cm-textfield {
+  width: 200px !important;
+  flex: none;
+}
+.cm-editor .cm-search .cm-button {
+  padding: 2px 8px;
+}
+
+/* Editor SQL: la sentencia donde está el cursor, y el modo de solo lectura para DDL. */
+.editor-host.fill {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border-bottom: 0;
+}
+.ddl-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.ddl-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Paletas (Ctrl+N y Ctrl+Mayús+A). */
+.palette-backdrop {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.palette {
+  width: 620px;
+  max-width: 94vw;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.palette-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.palette-input input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+}
+.palette-list {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.palette-item.active {
+  background: var(--accent-soft);
+}
+.palette-item.disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.palette-label {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette-detail {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.palette-empty {
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+  white-space: pre-wrap;
+}
+.palette-hint {
+  padding: 7px 14px;
+  font-size: 11.5px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+/* Estructura de la tabla. */
+.structure {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 16px 20px;
+}
+.structure section {
+  margin-top: 18px;
+}
+.structure h3 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-soft);
+  text-transform: uppercase;
+}
+.struct-table {
+  width: 100%;
+  border: 1px solid var(--border);
+}
+.struct-table th {
+  position: static;
+}
+.struct-table .wrap-cell {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 640px;
+}
+.struct-table .cascade {
+  color: var(--warn);
+}
+.struct-none {
+  margin: 0;
+  font-size: 12.5px;
+}
+.struct-comment {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+.stats {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: 12.5px;
+}
+.stats dt {
+  color: var(--muted);
+}
+.stats dd {
+  margin: 0;
+  font-family: var(--mono);
+}
+.tag + .tag,
+.struct-table .tag {
+  margin-left: 6px;
+}
+
+/* Plan de ejecución en árbol. */
+.plan-tree {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.plan-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.plan-worst {
+  margin-left: auto;
+}
+.plan-nodes {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 14px 20px;
+}
+.plan-node {
+  margin: 6px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.plan-node.warm {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+.plan-node.hot {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+.plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plan-toggle {
+  width: 18px;
+  padding: 0;
+}
+.plan-toggle.hidden {
+  visibility: hidden;
+}
+.plan-title {
+  font-size: 13px;
+}
+.plan-bar {
+  margin-left: auto;
+  width: 110px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+  flex: none;
+}
+.plan-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.plan-node.warm .plan-bar span {
+  background: var(--warn);
+}
+.plan-node.hot .plan-bar span {
+  background: var(--danger);
+}
+.plan-pct {
+  width: 38px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.plan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 3px 0 0 26px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.plan-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+.plan-detail {
+  margin: 2px 0 0 26px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-soft);
+  word-break: break-word;
+}
+
+/* Parámetros con nombre. */
+.param-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.param-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+/* `.modal label` apila en columna; estas etiquetas deben ir en línea. */
+.modal label.inline-check,
+.modal label.inline-select,
+.modal label.diff-chip,
+.modal .rowform-field label {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.modal label.inline-check,
+.modal label.inline-select,
+.modal label.diff-chip {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.param-row .inline-check {
+  gap: 4px;
+}
+.param-row > label:first-child {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+/* Vista de fila como formulario. */
+.modal.rowform {
+  width: 720px;
+  max-height: 88vh;
+}
+.rowform-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rowform-head h2 {
+  margin: 0;
+}
+.rowform-fields {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+.rowform-field label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.rowform-name {
+  font-weight: 600;
+}
+.rowform-type {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.rowform-field textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+.rowform-field textarea.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.rowform-field textarea[readonly] {
+  background: var(--surface-2);
+}
+.rowform-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 3px;
+}
+.rowform-array {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.array-item {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.array-item.null {
+  background: var(--border);
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Importar. */
+.modal.import-dialog {
+  width: 760px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.import-file,
+.import-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.import-map {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.import-map-head,
+.import-map-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.import-map-head {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.import-map-row > span {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.import-preview .grid-scroll {
+  max-height: 170px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+/* Comparar resultados. */
+.modal.compare-dialog {
+  width: 1000px;
+  max-height: 90vh;
+}
+.compare-pickers,
+.compare-keys,
+.compare-summary,
+.compare-pins {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.compare-table {
+  max-height: 46vh;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.diff-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: var(--surface-2);
+}
+.diff-chip.diff-added {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.diff-chip.diff-removed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.diff-chip.diff-changed {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.grid tr.diff-added td:not(.rownum) {
+  background: var(--ok-soft);
+}
+.grid tr.diff-removed td:not(.rownum) {
+  background: var(--danger-soft);
+}
+.grid tr.diff-changed td:not(.rownum) {
+  background: var(--warn-soft);
+}
+.grid td.diff-cell {
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+.diff-old {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+.diff-new {
+  color: var(--ok);
+}
+.pin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+.alert-inline {
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+/* Menú contextual (clic derecho). */
+.context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+.context-menu {
+  position: fixed;
+  min-width: 210px;
+  padding: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.context-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.context-item.destructive {
+  color: var(--danger);
+}
+.context-item.destructive:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+.context-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.context-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+/* Confirmación de eliminación. */
+.modal.drop-dialog {
+  width: 560px;
+}
+.drop-dialog h2 code {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--danger);
+}
+.drop-label {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.drop-unlock {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.drop-unlock input {
+  flex: 1;
+}
+.drop-lock > div {
+  flex: 1;
+}

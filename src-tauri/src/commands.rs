@@ -8,7 +8,8 @@ use tokio::sync::Mutex;
 use crate::db::Session;
 use crate::models::*;
 use crate::edit::{self, ApplyResult, ChangeSet};
-use crate::{db, export, profiles, secrets};
+use crate::files::{self, ApprovedPaths, Kind};
+use crate::{db, dropping, export, import, profiles, schema, secrets};
 
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
@@ -307,6 +308,133 @@ pub async fn apply_changes(
     let session = session(&state, &id).await?;
     let _gate = session.gate.write().await;
     edit::apply_changes(&session, &schema, &table, &changes).await
+}
+
+#[tauri::command]
+pub async fn search_objects(state: State<'_, Sessions>, id: String) -> Result<Vec<ObjectRef>, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
+    schema::search_objects(&session.client).await
+}
+
+#[tauri::command]
+pub async fn table_structure(
+    state: State<'_, Sessions>,
+    id: String,
+    schema: String,
+    table: String,
+) -> Result<TableStructure, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
+    schema::table_structure(&session.client, &schema, &table).await
+}
+
+#[tauri::command]
+pub async fn object_ddl(
+    state: State<'_, Sessions>,
+    id: String,
+    schema: String,
+    name: String,
+    kind: String,
+    oid: Option<u32>,
+) -> Result<String, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
+    schema::object_ddl(&session.client, &schema, &name, &kind, oid).await
+}
+
+#[tauri::command]
+pub async fn completion_fks(state: State<'_, Sessions>, id: String) -> Result<Vec<ForeignKey>, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.read().await;
+    schema::completion_fks(&session.client).await
+}
+
+#[tauri::command]
+pub async fn import_rows(
+    state: State<'_, Sessions>,
+    id: String,
+    schema: String,
+    table: String,
+    columns: Vec<String>,
+    rows: Vec<Vec<Option<String>>>,
+    dry_run: bool,
+) -> Result<ImportResult, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.write().await;
+    import::import_rows(&session, &schema, &table, &columns, &rows, dry_run).await
+}
+
+#[tauri::command]
+pub async fn drop_object(
+    state: State<'_, Sessions>,
+    id: String,
+    schema: String,
+    name: String,
+    kind: String,
+    cascade: bool,
+    confirm: String,
+) -> Result<String, String> {
+    let session = session(&state, &id).await?;
+    let _gate = session.gate.write().await;
+    dropping::drop_object(&session, &schema, &name, &kind, cascade, &confirm).await
+}
+
+#[tauri::command]
+pub async fn drop_database(
+    app: AppHandle,
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+    force: bool,
+    confirm: String,
+) -> Result<String, String> {
+    dropping::check_confirm(&database, &confirm)?;
+    dropping::drop_database_sql(&database, force)?;
+
+    // Solo se permite si el usuario habilitó la escritura en alguna base de este servidor.
+    let prefix = format!("{id}::");
+    let write_enabled = {
+        let sessions = state.0.lock().await;
+        sessions
+            .iter()
+            .any(|(key, s)| key.starts_with(&prefix) && !s.read_only.load(std::sync::atomic::Ordering::SeqCst))
+    };
+    if !write_enabled {
+        return Err(
+            "Para eliminar una base de datos hay que habilitar antes la escritura en este servidor (botón de modo de cualquiera de sus bases)."
+                .to_string(),
+        );
+    }
+
+    let mut profile = profiles::find(&config_dir(&app)?, &id)?;
+    if profile.password.is_empty() {
+        profile.password = secrets::get(&id)?.unwrap_or_default();
+    }
+    // Se cierra nuestra propia sesión a esa base: si no, ella misma impediría eliminarla.
+    let own = state.0.lock().await.remove(&format!("{id}::{database}"));
+    drop(own);
+    dropping::drop_database(&profile, &database, force, &confirm).await
+}
+
+#[tauri::command]
+pub async fn open_text_file(
+    app: AppHandle,
+    approved: State<'_, ApprovedPaths>,
+    kind: String,
+) -> Result<Option<FileContent>, String> {
+    files::pick_and_read(&app, &approved, Kind::parse(&kind)?).await
+}
+
+#[tauri::command]
+pub async fn save_text_file(
+    app: AppHandle,
+    approved: State<'_, ApprovedPaths>,
+    content: String,
+    default_name: String,
+    path: Option<String>,
+) -> Result<Option<FileContent>, String> {
+    files::save(&app, &approved, &content, &default_name, path.as_deref()).await
 }
 
 #[tauri::command]

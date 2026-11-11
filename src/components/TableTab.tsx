@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   databaseOfSession,
@@ -6,9 +6,12 @@ import {
   type ColumnFilter,
   type ColumnInfo,
   type ExportFormat,
+  type ForeignKey,
   type InsertValue,
+  type ResultSet,
   type SortKey,
   type TablePage,
+  type TableStructure,
 } from "../api";
 import { askExportPath } from "../exporting";
 import {
@@ -26,6 +29,9 @@ import { parseFilters } from "../filters";
 import ResultGrid, { type GridEdit } from "./ResultGrid";
 import ExportMenu from "./ExportMenu";
 import ModeChip from "./ModeChip";
+import StructureView from "./StructureView";
+import DdlView from "./DdlView";
+import ImportDialog from "./ImportDialog";
 import Icon from "./Icon";
 
 interface Props {
@@ -34,30 +40,53 @@ interface Props {
   table: string;
   readOnly: boolean;
   production: boolean;
+  initialFilters?: ColumnFilter[];
   onSetReadOnly: (readOnly: boolean, confirm?: string) => Promise<void>;
+  onOpenTable: (schema: string, table: string, filters?: ColumnFilter[]) => void;
+  onOpenInSql: (sql: string) => void;
+  onPin: (label: string, result: ResultSet) => void;
 }
 
-const PAGE_SIZES = [50, 100, 200, 500, 1000];
+const PAGE_SIZES = [50, 100, 200, 500, 1000, 2000, 5000];
 
-export default function TableTab({ connId, schema, table, readOnly, production, onSetReadOnly }: Props) {
-  const [view, setView] = useState<"data" | "structure">("data");
+const equalsInput = (filters: ColumnFilter[]): Record<string, string> =>
+  Object.fromEntries(filters.map((f) => [f.column, `=${f.value ?? ""}`]));
+
+export default function TableTab({
+  connId,
+  schema,
+  table,
+  readOnly,
+  production,
+  initialFilters,
+  onSetReadOnly,
+  onOpenTable,
+  onOpenInSql,
+  onPin,
+}: Props) {
+  const seed = useRef<Record<string, string> | null>(null);
+  if (seed.current === null) seed.current = equalsInput(initialFilters ?? []);
+  const [view, setView] = useState<"data" | "structure" | "ddl">("data");
   const [pageSize, setPageSize] = useState(200);
   const [offset, setOffset] = useState(0);
   const [sorts, setSorts] = useState<SortKey[]>([]);
   const [page, setPage] = useState<TablePage | null>(null);
   const [exactCount, setExactCount] = useState<number | null>(null);
   const [columns, setColumns] = useState<ColumnInfo[] | null>(null);
+  const [structure, setStructure] = useState<TableStructure | null>(null);
+  const [structureError, setStructureError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [filterInputs, setFilterInputs] = useState<Record<string, string>>({});
-  const [applied, setApplied] = useState<ColumnFilter[]>([]);
+  const [filterInputs, setFilterInputs] = useState<Record<string, string>>(seed.current);
+  const [applied, setApplied] = useState<ColumnFilter[]>(initialFilters ?? []);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [pending, setPending] = useState<Pending>(emptyPending);
   const [review, setReview] = useState<{ sql: string[]; error: string | null; applying: boolean } | null>(null);
-  const lastApplied = useRef("[]");
+  const lastApplied = useRef(JSON.stringify(parseFilters(seed.current)));
   const nextInsertId = useRef(0);
 
   const pkColumns = columns?.filter((c) => c.isPrimaryKey).map((c) => c.name) ?? [];
@@ -109,6 +138,32 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
       cancelled = true;
     };
   }, [connId, schema, table, reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .tableStructure(connId, schema, table)
+      .then((s) => {
+        if (cancelled) return;
+        setStructure(s);
+        setStructureError(null);
+      })
+      .catch((e) => !cancelled && setStructureError(errorText(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [connId, schema, table, reloadKey]);
+
+  const fkByColumn = useMemo(() => {
+    const map = new Map<string, ForeignKey>();
+    for (const fk of structure?.foreignKeys ?? []) for (const c of fk.columns) if (!map.has(c)) map.set(c, fk);
+    return map;
+  }, [structure]);
+  const fkColumns = useMemo(() => new Set(fkByColumn.keys()), [fkByColumn]);
+  const columnTypes = useMemo(
+    () => Object.fromEntries((columns ?? []).map((c) => [c.name, c.dataType])),
+    [columns],
+  );
 
   const sort = useCallback((column: string, additive: boolean) => {
     setOffset(0);
@@ -231,6 +286,33 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
     }
   };
 
+  const valuesOf = (rowIndex: number, names: string[]): string[] | null => {
+    const row = rows[rowIndex];
+    if (!row) return null;
+    const values = names.map((n) => row[pageColumns.indexOf(n)]);
+    return values.every((v): v is string => typeof v === "string") ? values : null;
+  };
+
+  const equalsOn = (names: string[], values: string[]): ColumnFilter[] =>
+    names.map((column, i) => ({ column, op: "equals", value: values[i] }));
+
+  const followForeignKey = (rowIndex: number, column: string) => {
+    const fk = fkByColumn.get(column);
+    if (!fk) return;
+    const values = valuesOf(rowIndex, fk.columns);
+    if (!values) {
+      setNotice("Esa clave foránea tiene un valor NULL: no apunta a ningún registro.");
+      return;
+    }
+    onOpenTable(fk.refSchema, fk.refTable, equalsOn(fk.refColumns, values));
+  };
+
+  const followReferences = (fk: ForeignKey, rowIndex: number) => {
+    const values = valuesOf(rowIndex, fk.refColumns);
+    if (!values) return;
+    onOpenTable(fk.schema, fk.table, equalsOn(fk.columns, values));
+  };
+
   const gridEdit: GridEdit = {
     enabled: editing,
     pkColumns,
@@ -266,6 +348,9 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
           <button className={view === "structure" ? "active" : ""} onClick={() => setView("structure")}>
             Estructura
           </button>
+          <button className={view === "ddl" ? "active" : ""} onClick={() => setView("ddl")}>
+            DDL
+          </button>
         </div>
         <span className="chip chip-plain">
           <Icon name="table" size={13} /> {schema}.{table}
@@ -295,6 +380,26 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
           title={editBlock ?? "Doble clic en una celda para editarla; los cambios esperan hasta que los apliques"}
         >
           <Icon name="edit" size={13} /> {editing ? "Editando" : "Editar datos"}
+        </button>
+        <button
+          onClick={() => setImporting(true)}
+          disabled={!columns || (structure !== null && structure.kind !== "table")}
+          title="Importar un CSV o JSON en esta tabla, en una sola transacción"
+        >
+          <Icon name="upload" size={13} /> Importar…
+        </button>
+        <button
+          onClick={() =>
+            page &&
+            onPin(
+              `${schema}.${table}${applied.length > 0 ? " (filtrada)" : ""} · filas ${offset + 1}–${offset + rows.length}`,
+              page.result,
+            )
+          }
+          disabled={!page || view !== "data"}
+          title="Fijar las filas que se ven para compararlas con otro resultado"
+        >
+          <Icon name="pin" size={13} /> Fijar
         </button>
         <ExportMenu onExport={exportData} disabled={exporting || view !== "data"} />
         <button onClick={refresh} disabled={loading}>
@@ -344,13 +449,38 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
                 filters={filterInputs}
                 onFilterChange={changeFilter}
                 edit={gridEdit}
-                selectionActions={(selectedRows) =>
-                  editing ? (
-                    <button className="small danger" onClick={() => markDeleted(selectedRows)}>
-                      <Icon name="trash" size={12} /> Marcar para eliminar
-                    </button>
-                  ) : null
-                }
+                columnTypes={columnTypes}
+                fkColumns={fkColumns}
+                onFollow={followForeignKey}
+                selectionActions={(selectedRows) => (
+                  <>
+                    {selectedRows.length === 1 && structure && structure.referencedBy.length > 0 && (
+                      <select
+                        className="small"
+                        aria-label="Ir a los registros que referencian esta fila"
+                        value=""
+                        onChange={(e) => {
+                          const fk = structure.referencedBy[Number(e.target.value)];
+                          if (fk) followReferences(fk, selectedRows[0]);
+                        }}
+                      >
+                        <option value="" disabled>
+                          Referenciada por…
+                        </option>
+                        {structure.referencedBy.map((fk, i) => (
+                          <option key={`${fk.schema}.${fk.table}.${fk.name}`} value={i}>
+                            {fk.schema}.{fk.table} ({fk.columns.join(", ")})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {editing && (
+                      <button className="small danger" onClick={() => markDeleted(selectedRows)}>
+                        <Icon name="trash" size={12} /> Marcar para eliminar
+                      </button>
+                    )}
+                  </>
+                )}
               />
             )}
             {loading && (
@@ -413,33 +543,39 @@ export default function TableTab({ connId, schema, table, readOnly, production, 
 
       {view === "structure" && (
         <div className="grid-host">
-          <div className="grid-scroll">
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th className="rownum">#</th>
-                  <th>Columna</th>
-                  <th>Tipo</th>
-                  <th>Nulo</th>
-                  <th>Por defecto</th>
-                  <th>PK</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(columns ?? []).map((c, i) => (
-                  <tr key={c.name}>
-                    <td className="rownum">{i + 1}</td>
-                    <td>{c.name}</td>
-                    <td>{c.dataType}</td>
-                    <td>{c.nullable ? "sí" : "no"}</td>
-                    <td className={c.default === null ? "null" : ""}>{c.default ?? "—"}</td>
-                    <td>{c.isPrimaryKey ? <Icon name="key" className="ic-pk" /> : ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <StructureView
+            structure={structure}
+            error={structureError}
+            onOpenTable={(s, t) => onOpenTable(s, t)}
+          />
         </div>
+      )}
+
+      {view === "ddl" && (
+        <DdlView
+          connId={connId}
+          schema={schema}
+          name={table}
+          kind={structure?.kind ?? "table"}
+          oid={null}
+          onOpenInSql={onOpenInSql}
+        />
+      )}
+
+      {importing && columns && (
+        <ImportDialog
+          connId={connId}
+          schema={schema}
+          table={table}
+          columns={columns}
+          readOnly={readOnly}
+          onClose={() => setImporting(false)}
+          onDone={(inserted) => {
+            setImporting(false);
+            setNotice(`Se importaron ${inserted.toLocaleString()} filas en una sola transacción.`);
+            refresh();
+          }}
+        />
       )}
 
       {review && (
