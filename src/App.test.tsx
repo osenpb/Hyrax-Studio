@@ -16,6 +16,7 @@ let openedFile: { path: string; name: string; content: string } | null = null;
 let importError: string | null = null;
 let dropError: string | null = null;
 let profilesCleared = false;
+let withMongoProfile = false;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -85,6 +86,9 @@ const profile = {
   production: false,
 };
 
+/** La pantalla de inicio repite el nombre de las conexiones: estas pruebas buscan solo en la barra lateral. */
+const inSidebar = () => within(document.querySelector("aside") as HTMLElement);
+
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(async () => saveResult),
 }));
@@ -93,10 +97,26 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd: string, args: Record<string, unknown> = {}) => {
     calls.push({ cmd, args });
     switch (cmd) {
-      case "list_profiles":
+      case "list_profiles": {
         if (profilesCleared) return [];
-        return [{ ...profile, production: productionProfile, hasPassword: true, caCertPath: null }];
+        const list: unknown[] = [{ ...profile, production: productionProfile, hasPassword: true, caCertPath: null }];
+        if (withMongoProfile) {
+          list.push({
+            ...profile,
+            id: "m1",
+            name: "atlas_demo",
+            host: "cluster0.abcde.mongodb.net",
+            user: "ana",
+            engine: "mongodb",
+            mongo: { srv: true, extraHosts: "", authSource: null, replicaSet: null, directConnection: false },
+            hasPassword: true,
+            caCertPath: null,
+          });
+        }
+        return list;
+      }
       case "connect_profile":
+        if (args.id === "m1") throw "El explorador de MongoDB llega en la fase M1.";
         return { version: "PostgreSQL 16", readOnly: readOnlyState };
       case "set_read_only":
         readOnlyState = args.enabled as boolean;
@@ -236,6 +256,8 @@ Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
 
 beforeEach(() => {
   profilesCleared = false;
+  withMongoProfile = false;
+  localStorage.removeItem("hyrax-recent");
   calls.length = 0;
   failDatabases = false;
   readOnlyState = true;
@@ -256,7 +278,7 @@ describe("navegador", () => {
   it("al abrir el servidor lista sus bases de datos", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
 
     expect(await screen.findByText("erp_db")).toBeTruthy();
     expect(await screen.findByText("postgres")).toBeTruthy();
@@ -266,7 +288,7 @@ describe("navegador", () => {
   it("un segundo clic mientras conecta no cierra el servidor", async () => {
     const user = userEvent.setup();
     render(<App />);
-    const row = await screen.findByText("dev_erp");
+    const row = await inSidebar().findByText("dev_erp");
     await user.click(row);
     await user.click(row);
     await user.click(row);
@@ -279,7 +301,7 @@ describe("navegador", () => {
     failDatabases = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
 
     expect(await screen.findByText(/permiso denegado/)).toBeTruthy();
     expect(screen.queryByText("Cargando…")).toBeNull();
@@ -289,11 +311,11 @@ describe("navegador", () => {
     failDatabases = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText(/permiso denegado/);
 
     failDatabases = false;
-    await user.click(screen.getByText("dev_erp"));
+    await user.click(inSidebar().getByText("dev_erp"));
     expect(await screen.findByText("erp_db")).toBeTruthy();
     expect(screen.queryByText(/permiso denegado/)).toBeNull();
   });
@@ -301,7 +323,7 @@ describe("navegador", () => {
   it("al abrir otra base muestra sus tablas", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await user.click(await screen.findByText("erp_db"));
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "connect_profile" && c.args.database === "erp_db")).toBe(true));
@@ -313,7 +335,7 @@ describe("navegador", () => {
   it("el editor SQL abre en solo lectura y pide confirmación para habilitar escritura", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
 
@@ -335,7 +357,7 @@ describe("navegador", () => {
     holdRuns = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
 
@@ -348,7 +370,7 @@ describe("navegador", () => {
   });
 
   async function openSql(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
   }
@@ -425,7 +447,7 @@ describe("filtros de columna", () => {
   });
 
   async function openOrders(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await user.click(await screen.findByText("erp_db"));
     const orders = await screen.findByText("orders");
     await user.dblClick(orders);
@@ -467,7 +489,7 @@ describe("exportación", () => {
   it("exporta la tabla filtrada al archivo elegido", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await user.click(await screen.findByText("erp_db"));
     await user.dblClick(await screen.findByText("orders"));
     await user.type(await screen.findByLabelText("Filtrar id"), "=7");
@@ -490,7 +512,7 @@ describe("exportación", () => {
     saveResult = null;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await user.click(await screen.findByText("erp_db"));
     await user.dblClick(await screen.findByText("orders"));
     await screen.findByLabelText("Filtrar id");
@@ -504,7 +526,7 @@ describe("exportación", () => {
   it("exporta la consulta del editor SQL", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
 
@@ -541,7 +563,7 @@ describe("portapapeles", () => {
 
 describe("rejilla de datos", () => {
   async function openOrdersTab(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await user.click(await screen.findByText("erp_db"));
     await user.dblClick(await screen.findByText("orders"));
     await screen.findByLabelText("Filtrar total");
@@ -705,7 +727,7 @@ describe("detección de sentencias peligrosas", () => {
 
 describe("edición de datos en el visor", () => {
   async function openOrdersEditable(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await user.click(await screen.findByText("erp_db"));
     await user.dblClick(await screen.findByText("orders"));
     await screen.findByLabelText("Filtrar total");
@@ -848,7 +870,7 @@ describe("edición de datos en el visor", () => {
 
 describe("seguridad en producción y en el editor SQL", () => {
   async function openSqlTab(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
   }
@@ -958,7 +980,7 @@ describe("seguridad en producción y en el editor SQL", () => {
 
 describe("credenciales, TLS e historial", () => {
   async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
-    await screen.findByText("dev_erp");
+    await inSidebar().findByText("dev_erp");
     await user.click(screen.getAllByTitle("Editar")[0]);
     await screen.findByText("Editar conexión");
   }
@@ -1000,7 +1022,7 @@ describe("credenciales, TLS e historial", () => {
   });
 
   async function openSqlEditor(user: ReturnType<typeof userEvent.setup>) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
   }
@@ -1041,7 +1063,7 @@ describe("credenciales, TLS e historial", () => {
     localStorage.setItem("hyrax-history:p1", JSON.stringify([{ sql: "SELECT 42", at: 1, ms: 1, ok: true }]));
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText("dev_erp");
+    await inSidebar().findByText("dev_erp");
     await user.click(screen.getAllByTitle("Eliminar")[0]);
     await user.click(await screen.findByText("Eliminar", { selector: "button.danger" }));
 
@@ -1053,7 +1075,7 @@ describe("credenciales, TLS e historial", () => {
 type User = ReturnType<typeof userEvent.setup>;
 
 async function connectAndOpenOrders(user: User) {
-  await user.click(await screen.findByText("dev_erp"));
+  await user.click(await inSidebar().findByText("dev_erp"));
   await screen.findByText("erp_db");
   await user.click(await screen.findByText("erp_db"));
   await user.click(await screen.findByText("orders"));
@@ -1071,7 +1093,7 @@ describe("etapa 9: navegar el esquema", () => {
   it("Ctrl+N abre la paleta de objetos, filtra y abre la tabla elegida", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
 
     await user.keyboard("{Control>}n{/Control}");
@@ -1089,7 +1111,7 @@ describe("etapa 9: navegar el esquema", () => {
   it("Ctrl+Enter en la paleta abre el DDL y una función siempre abre su DDL", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
 
     await user.keyboard("{Control>}n{/Control}");
@@ -1105,7 +1127,7 @@ describe("etapa 9: navegar el esquema", () => {
   it("Ctrl+Mayús+A abre la paleta de comandos y ejecuta uno", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
 
     await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
@@ -1173,7 +1195,7 @@ describe("etapa 9: navegar el esquema", () => {
 
 describe("etapa 10: consola SQL", () => {
   async function openEditor(user: User) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(screen.getAllByTitle("Nuevo editor SQL")[0]);
     await screen.findByText("Ejecutar todo");
@@ -1426,7 +1448,7 @@ describe("etapa 11: datos avanzados", () => {
 
 describe("menú contextual y eliminar", () => {
   async function showOrders(user: User) {
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     await screen.findByText("erp_db");
     await user.click(await screen.findByText("erp_db"));
     return screen.findByText("orders");
@@ -1547,7 +1569,7 @@ describe("menú contextual y eliminar", () => {
     readOnlyState = false;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await inSidebar().findByText("dev_erp"));
     fireEvent.contextMenu(await screen.findByText("erp_db"));
     await user.click(await screen.findByRole("menuitem", { name: /Eliminar base de datos/ }));
 
@@ -1592,7 +1614,7 @@ describe("borrar conexiones y contraseñas guardadas", () => {
     const user = userEvent.setup();
     localStorage.setItem("hyrax-history:p1", JSON.stringify([{ sql: "select 1", at: 1, ms: 1, ok: true }]));
     render(<App />);
-    await screen.findByText("dev_erp");
+    await inSidebar().findByText("dev_erp");
 
     const dialog = await openReset(user);
     const confirm = within(dialog).getByRole("button", { name: "Borrar todo" }) as HTMLButtonElement;
@@ -1608,7 +1630,7 @@ describe("borrar conexiones y contraseñas guardadas", () => {
     await user.click(confirm);
 
     await waitFor(() => expect(calls.find((c) => c.cmd === "reset_app_data")?.args).toEqual({ confirm: "BORRAR" }));
-    await waitFor(() => expect(screen.queryByText("dev_erp")).toBeNull());
+    await waitFor(() => expect(inSidebar().queryByText("dev_erp")).toBeNull());
     expect(screen.queryByRole("dialog", { name: "Borrar datos guardados" })).toBeNull();
     expect(localStorage.getItem("hyrax-history:p1")).toBeNull();
   });
@@ -1617,18 +1639,18 @@ describe("borrar conexiones y contraseñas guardadas", () => {
     const user = userEvent.setup();
     localStorage.setItem("hyrax-history:p1", JSON.stringify([{ sql: "select 1", at: 1, ms: 1, ok: true }]));
     render(<App />);
-    await screen.findByText("dev_erp");
+    await inSidebar().findByText("dev_erp");
 
     let dialog = await openReset(user);
     await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
     expect(calls.some((c) => c.cmd === "reset_app_data")).toBe(false);
-    expect(screen.getByText("dev_erp")).toBeTruthy();
+    expect(inSidebar().getByText("dev_erp")).toBeTruthy();
 
     dialog = await openReset(user);
     await user.click(within(dialog).getByRole("checkbox"));
     await user.type(within(dialog).getByRole("textbox", { name: "Escribe BORRAR para confirmar" }), "BORRAR");
     await user.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
-    await waitFor(() => expect(screen.queryByText("dev_erp")).toBeNull());
+    await waitFor(() => expect(inSidebar().queryByText("dev_erp")).toBeNull());
     expect(localStorage.getItem("hyrax-history:p1")).not.toBeNull();
     localStorage.removeItem("hyrax-history:p1");
   });
@@ -1637,7 +1659,7 @@ describe("borrar conexiones y contraseñas guardadas", () => {
 describe("conexión por motor", () => {
   const openNew = async (user: ReturnType<typeof userEvent.setup>) => {
     render(<App />);
-    await screen.findByText("dev_erp");
+    await inSidebar().findByText("dev_erp");
     await user.click(screen.getByTitle("Nueva conexión"));
     return await screen.findByRole("radiogroup", { name: "Motor" });
   };
@@ -1654,7 +1676,7 @@ describe("conexión por motor", () => {
     await user.click(mongo);
     expect(mongo.getAttribute("aria-checked")).toBe("true");
     expect(screen.getByText("Usar mongodb+srv (Atlas)")).toBeTruthy();
-    expect(screen.getByText("Base de autenticación (vacío = admin)")).toBeTruthy();
+    expect(screen.getByText("Base de autenticación")).toBeTruthy();
     expect(screen.getByText("Base de datos (opcional)")).toBeTruthy();
     expect(screen.queryByText("Conectar por un túnel SSH")).toBeNull();
     expect((screen.getByLabelText(/^Puerto/) as HTMLInputElement).value).toBe("27017");
@@ -1705,8 +1727,8 @@ describe("conexión por motor", () => {
   it("al editar una conexión no se puede cambiar el motor ni pegar una cadena de otro", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByText("dev_erp");
-    await user.hover(screen.getByText("dev_erp"));
+    await inSidebar().findByText("dev_erp");
+    await user.hover(inSidebar().getByText("dev_erp"));
     await user.click(screen.getByTitle("Editar"));
     await screen.findByText("Editar conexión");
     expect(screen.queryByRole("radiogroup", { name: "Motor" })).toBeNull();
@@ -1715,5 +1737,57 @@ describe("conexión por motor", () => {
       clipboardData: { getData: () => "mongodb://h/db" },
     });
     expect(await screen.findByText(/es de PostgreSQL; la cadena es de otro motor/)).toBeTruthy();
+  });
+});
+
+describe("pantalla de inicio", () => {
+  it("lista las conexiones con su motor y los botones de nueva conexión por motor", async () => {
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    const start = await screen.findByRole("button", { name: /Conectar con atlas_demo/ });
+    expect(within(start).getByText("MongoDB")).toBeTruthy();
+    const pg = screen.getByRole("button", { name: /Conectar con dev_erp/ });
+    expect(within(pg).getByText("PostgreSQL")).toBeTruthy();
+    expect(within(pg).getByText("u@h")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: /Nueva conexión MongoDB/ }));
+    const picker = await screen.findByRole("radiogroup", { name: "Motor" });
+    expect(within(picker).getByRole("radio", { name: "MongoDB" }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByLabelText(/^Puerto/) as HTMLInputElement).value).toBe("27017");
+  });
+
+  it("Nueva conexión PostgreSQL abre el formulario de PostgreSQL", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Nueva conexión PostgreSQL/ }));
+    const picker = await screen.findByRole("radiogroup", { name: "Motor" });
+    expect(within(picker).getByRole("radio", { name: "PostgreSQL" }).getAttribute("aria-checked")).toBe("true");
+    expect((screen.getByLabelText(/^Puerto/) as HTMLInputElement).value).toBe("5432");
+  });
+
+  it("abrir una conexión desde el inicio la conecta y la deja como reciente", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "connect_profile" && c.args.id === "p1")).toBe(true));
+    expect(JSON.parse(localStorage.getItem("hyrax-recent") ?? "[]")).toEqual(["p1"]);
+  });
+
+  it("una conexión de MongoDB avisa de que el explorador llega en M1", async () => {
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    expect(await screen.findByText(/No se pudo conectar: El explorador de MongoDB llega en la fase M1/)).toBeTruthy();
+  });
+
+  it("las recientes van primero", async () => {
+    withMongoProfile = true;
+    localStorage.setItem("hyrax-recent", JSON.stringify(["m1"]));
+    render(<App />);
+    await screen.findByRole("button", { name: /Conectar con dev_erp/ });
+    const names = screen.getAllByRole("button", { name: /^Conectar con / }).map((b) => b.getAttribute("title"));
+    expect(names).toEqual(["Conectar con atlas_demo", "Conectar con dev_erp"]);
   });
 });

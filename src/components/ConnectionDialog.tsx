@@ -4,18 +4,21 @@ import { detectEngine, parseConnectionString, parseMongoUri } from "../connstrin
 
 interface Props {
   initial: ConnectionProfile | null;
+  /** Motor preseleccionado al crear una conexión nueva (por omisión PostgreSQL). */
+  initialEngine?: Engine;
   onSave: (profile: ConnectionProfile) => Promise<void>;
   onClose: () => void;
 }
 
-function blank(): ConnectionProfile {
+function blank(engine: Engine = "postgres"): ConnectionProfile {
+  const mongo = engine === "mongodb";
   return {
     id: crypto.randomUUID(),
     name: "",
     host: "localhost",
-    port: 5432,
-    database: "postgres",
-    user: "postgres",
+    port: mongo ? 27017 : 5432,
+    database: mongo ? "" : "postgres",
+    user: mongo ? "" : "postgres",
     password: "",
     sslMode: "disable",
     readOnly: true,
@@ -23,12 +26,12 @@ function blank(): ConnectionProfile {
     caCertPath: null,
     hasPassword: false,
     ssh: noSsh(),
-    engine: "postgres",
+    engine,
     mongo: noMongo(),
   };
 }
 
-export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
+export default function ConnectionDialog({ initial, initialEngine, onSave, onClose }: Props) {
   const [p, setP] = useState<ConnectionProfile>(
     initial
       ? {
@@ -38,7 +41,7 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
           engine: initial.engine ?? "postgres",
           mongo: initial.mongo ?? noMongo(),
         }
-      : blank(),
+      : blank(initialEngine),
   );
   const [unknownKey, setUnknownKey] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -380,7 +383,7 @@ export default function ConnectionDialog({ initial, onSave, onClose }: Props) {
         {mongo && (
           <div className="row">
             <label className="grow">
-              Base de autenticación (vacío = admin)
+              Base de autenticación
               <input
                 value={p.mongo.authSource ?? ""}
                 placeholder="admin"

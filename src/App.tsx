@@ -7,6 +7,7 @@ import {
   profileOfSession,
   type ColumnFilter,
   type ConnectionProfile,
+  type Engine,
   type ObjectKind,
   type ObjectRef,
   type ResultSet,
@@ -20,6 +21,8 @@ import DdlView from "./components/DdlView";
 import Palette, { type PaletteItem } from "./components/Palette";
 import CompareDialog, { type Pin } from "./components/CompareDialog";
 import ResetDialog from "./components/ResetDialog";
+import StartScreen from "./components/StartScreen";
+import { markRecent } from "./recent";
 import Icon, { type IconName } from "./components/Icon";
 import { clearHistory } from "./history";
 import { rank } from "./fuzzy";
@@ -77,7 +80,8 @@ export default function App() {
   const [selectedConn, setSelectedConn] = useState<string | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ profile: ConnectionProfile | null } | null>(null);
+  const [dialog, setDialog] = useState<{ profile: ConnectionProfile | null; engine?: Engine } | null>(null);
+  const [openRequest, setOpenRequest] = useState<{ id: string; n: number } | null>(null);
   const [toDelete, setToDelete] = useState<ConnectionProfile | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
@@ -129,6 +133,7 @@ export default function App() {
     try {
       const info = await api.connect(profileId, database);
       setConnected((prev) => ({ ...prev, [key]: info }));
+      markRecent(profileId);
       return true;
     } catch (e) {
       setBanner(`No se pudo conectar: ${errorText(e)}`);
@@ -435,6 +440,7 @@ export default function App() {
         onConnect={connect}
         onDisconnect={disconnect}
         onNew={() => setDialog({ profile: null })}
+        openRequest={openRequest}
         onEdit={(profile) => setDialog({ profile })}
         onDelete={setToDelete}
         onOpenSql={(connId, sql) => openSql(connId, sql)}
@@ -520,25 +526,12 @@ export default function App() {
         </div>
         <div className="tab-content">
           {tabs.length === 0 && (
-            <div className="welcome">
-              <img className="welcome-logo" src={logoLarge} alt="" />
-              <h1>Hyrax Studio</h1>
-              <p>Cliente PostgreSQL de escritorio</p>
-              <ul>
-                <li>
-                  <Icon name="server" /> Conecta un servidor desde el panel izquierdo
-                </li>
-                <li>
-                  <Icon name="database" /> Abre una base de datos para ver sus schemas
-                </li>
-                <li>
-                  <Icon name="table" /> Doble clic en una tabla para ver sus datos
-                </li>
-                <li>
-                  <Icon name="lock" /> Las conexiones nuevas abren en modo solo lectura
-                </li>
-              </ul>
-            </div>
+            <StartScreen
+              profiles={profiles}
+              logo={logoLarge}
+              onNew={(engine) => setDialog({ profile: null, engine })}
+              onOpen={(profile) => setOpenRequest((prev) => ({ id: profile.id, n: (prev?.n ?? 0) + 1 }))}
+            />
           )}
           {tabs.map((t) => (
             <div key={t.id} className="tab-pane" hidden={t.id !== activeTab}>
@@ -627,7 +620,12 @@ export default function App() {
         <ResetDialog count={profiles.length} onDone={() => void afterReset()} onClose={() => setResetOpen(false)} />
       )}
       {dialog && (
-        <ConnectionDialog initial={dialog.profile} onSave={saveProfile} onClose={() => setDialog(null)} />
+        <ConnectionDialog
+          initial={dialog.profile}
+          initialEngine={dialog.engine}
+          onSave={saveProfile}
+          onClose={() => setDialog(null)}
+        />
       )}
       {toDelete && (
         <div className="modal-backdrop" onMouseDown={() => setToDelete(null)}>

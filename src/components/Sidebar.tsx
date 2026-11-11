@@ -57,6 +57,8 @@ interface Props {
   onSetReadOnly: (key: string, enabled: boolean, confirm?: string) => Promise<void>;
   onObjectDropped: (connId: string, schema: string, name: string) => void;
   onDatabaseDropped: (profileId: string, database: string) => void;
+  /** La pantalla de inicio pide abrir una conexión (n cambia en cada petición). */
+  openRequest?: { id: string; n: number } | null;
 }
 
 interface ConnCache {
@@ -80,7 +82,7 @@ interface RowProps {
   label: string;
   icon?: IconName;
   iconClass?: string;
-  tag?: { text: string; tone: "ok" | "warn" | "danger" };
+  tag?: { text: string; tone: "ok" | "warn" | "danger" | "info" };
   expandable?: boolean;
   expanded?: boolean;
   active?: boolean;
@@ -333,6 +335,16 @@ export default function Sidebar(props: Props) {
       }
     });
 
+  const openRequestN = props.openRequest?.n;
+  useEffect(() => {
+    const request = props.openRequest;
+    if (!request) return;
+    const profile = props.profiles.find((p) => p.id === request.id);
+    if (profile) void clickConnection(profile);
+    // Solo debe reaccionar a una petición nueva, no a cada cambio de perfiles o sesiones.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequestN]);
+
   const clickDatabase = (profile: ConnectionProfile, database: string) => {
     const session = sessionKey(profile.id, database);
     return withBusy(session, async () => {
@@ -539,7 +551,13 @@ export default function Sidebar(props: Props) {
                 label={busy.has(id) ? `${profile.name} — conectando…` : profile.name}
                 icon="server"
                 iconClass={isConnected ? "ic-on" : "ic-off"}
-                tag={profile.production ? { text: "PROD", tone: "danger" } : undefined}
+                tag={
+                  profile.production
+                    ? { text: "PROD", tone: "danger" }
+                    : profile.engine === "mongodb"
+                      ? { text: "Mongo", tone: "info" }
+                      : undefined
+                }
                 expandable={isConnected}
                 expanded={open}
                 title={`${profile.host}:${profile.port}`}
