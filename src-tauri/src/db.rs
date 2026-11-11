@@ -49,7 +49,7 @@ pub fn describe(e: &tokio_postgres::Error) -> String {
         }
         if code == &SqlState::READ_ONLY_SQL_TRANSACTION {
             text.push_str(
-                "\nPgDesk: esta sesión está en modo solo lectura. Desactívalo desde la barra del editor SQL para escribir.",
+                "\nHyrax: esta sesión está en modo solo lectura. Desactívalo desde la barra del editor SQL para escribir.",
             );
         }
         return text;
@@ -188,7 +188,7 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
         .user(&profile.user)
         .password(&profile.password)
         .connect_timeout(Duration::from_secs(10))
-        .application_name("PgDesk");
+        .application_name("Hyrax");
 
     let make = |client: Client| Session {
         cancel: client.cancel_token(),
@@ -596,11 +596,11 @@ mod tests {
         Some(ConnectionProfile {
             id: "test".into(),
             name: "test".into(),
-            host: std::env::var("PGDESK_TEST_HOST").ok()?,
-            port: std::env::var("PGDESK_TEST_PORT").ok()?.parse().ok()?,
-            database: std::env::var("PGDESK_TEST_DB").ok()?,
-            user: std::env::var("PGDESK_TEST_USER").ok()?,
-            password: std::env::var("PGDESK_TEST_PASSWORD").ok()?,
+            host: std::env::var("HYRAX_TEST_HOST").ok()?,
+            port: std::env::var("HYRAX_TEST_PORT").ok()?.parse().ok()?,
+            database: std::env::var("HYRAX_TEST_DB").ok()?,
+            user: std::env::var("HYRAX_TEST_USER").ok()?,
+            password: std::env::var("HYRAX_TEST_PASSWORD").ok()?,
             ssl_mode: SslMode::Disable,
             read_only,
             production: false,
@@ -632,7 +632,7 @@ mod tests {
         let missing = tls_connector(true, Some("C:\\no\\existe\\ca.pem")).err().unwrap();
         assert!(missing.contains("No se pudo leer el certificado"), "{missing}");
 
-        let bogus = std::env::temp_dir().join(format!("pgdesk-bogus-ca-{}.pem", std::process::id()));
+        let bogus = std::env::temp_dir().join(format!("hyrax-bogus-ca-{}.pem", std::process::id()));
         std::fs::write(&bogus, "esto no es un certificado").unwrap();
         let invalid = tls_connector(true, Some(bogus.to_str().unwrap())).err().unwrap();
         assert!(invalid.contains("PEM"), "{invalid}");
@@ -646,7 +646,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn navigates_a_real_server() {
-        let profile = profile(true).expect("faltan variables PGDESK_TEST_*");
+        let profile = profile(true).expect("faltan variables HYRAX_TEST_*");
         let session = connect(&profile).await.expect("conexion");
         let client = &session.client;
         println!("{}", server_version(client).await.unwrap());
@@ -739,10 +739,10 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn write_mode_expires_on_the_server_even_if_the_ui_does_nothing() {
-        let var = |name: &str| std::env::var(name).expect("faltan variables PGDESK_WRITE_TEST_*");
+        let var = |name: &str| std::env::var(name).expect("faltan variables HYRAX_WRITE_TEST_*");
         let mut profile = tls_profile(SslMode::Disable, None);
         profile.read_only = true;
-        assert_eq!(var("PGDESK_WRITE_TEST_DB"), "scratch");
+        assert_eq!(var("HYRAX_WRITE_TEST_DB"), "scratch");
         let mut session = connect(&profile).await.unwrap();
 
         assert!(!apply_mode(&session, false).await.unwrap());
@@ -767,7 +767,7 @@ mod tests {
         let session = connect(&profile(true).unwrap()).await.unwrap();
         assert!(is_read_only(&session.client).await.unwrap());
 
-        let blocked = run_sql(&session, "CREATE TEMP TABLE pgdesk_probe (a int)", 10, 0)
+        let blocked = run_sql(&session, "CREATE TEMP TABLE hyrax_probe (a int)", 10, 0)
             .await
             .unwrap_err();
         println!("{blocked}");
@@ -797,15 +797,15 @@ mod tests {
     }
 
     fn tls_profile(mode: SslMode, ca: Option<String>) -> ConnectionProfile {
-        let var = |name: &str| std::env::var(name).expect("faltan variables PGDESK_WRITE_TEST_*");
+        let var = |name: &str| std::env::var(name).expect("faltan variables HYRAX_WRITE_TEST_*");
         ConnectionProfile {
             id: "tls".into(),
             name: "tls".into(),
-            host: var("PGDESK_WRITE_TEST_HOST"),
-            port: var("PGDESK_WRITE_TEST_PORT").parse().unwrap(),
-            database: var("PGDESK_WRITE_TEST_DB"),
-            user: var("PGDESK_WRITE_TEST_USER"),
-            password: var("PGDESK_WRITE_TEST_PASSWORD"),
+            host: var("HYRAX_WRITE_TEST_HOST"),
+            port: var("HYRAX_WRITE_TEST_PORT").parse().unwrap(),
+            database: var("HYRAX_WRITE_TEST_DB"),
+            user: var("HYRAX_WRITE_TEST_USER"),
+            password: var("HYRAX_WRITE_TEST_PASSWORD"),
             ssl_mode: mode,
             read_only: true,
             production: false,
@@ -829,7 +829,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn tls_modes_encrypt_and_verification_checks_the_certificate() {
-        let ca = std::env::var("PGDESK_TLS_CA_PATH").expect("falta PGDESK_TLS_CA_PATH");
+        let ca = std::env::var("HYRAX_TLS_CA_PATH").expect("falta HYRAX_TLS_CA_PATH");
 
         let plain = connect(&tls_profile(SslMode::Disable, None)).await.unwrap();
         assert!(!uses_tls(&plain).await);
@@ -852,7 +852,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn cancelling_works_on_a_verified_tls_session() {
-        let ca = std::env::var("PGDESK_TLS_CA_PATH").expect("falta PGDESK_TLS_CA_PATH");
+        let ca = std::env::var("HYRAX_TLS_CA_PATH").expect("falta HYRAX_TLS_CA_PATH");
         let session = Arc::new(connect(&tls_profile(SslMode::Verify, Some(ca))).await.unwrap());
         let runner = session.clone();
         let handle = tokio::spawn(async move { run_sql(&runner, "SELECT pg_sleep(30)", 10, 0).await });
@@ -1034,7 +1034,7 @@ mod tests {
         let session = connect(&profile(true).unwrap()).await.unwrap();
         let sql = "SELECT 1 AS id, 'x,\"y' AS note, NULL::text AS gap, true AS ok, 2.50::numeric AS price, '{\"k\": [1, 2]}'::jsonb AS doc \
                    UNION ALL SELECT 2, 'it''s', 'z', false, 0.1, NULL";
-        let dir = std::env::temp_dir().join(format!("pgdesk-export-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hyrax-export-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
 
         let csv_path = dir.join("out.csv");

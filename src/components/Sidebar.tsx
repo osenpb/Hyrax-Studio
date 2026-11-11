@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import logo from "../assets/hyrax-64.png";
 import {
   api,
   errorText,
@@ -490,8 +491,8 @@ export default function Sidebar(props: Props) {
     <aside className="sidebar">
       <div className="sidebar-head">
         <div className="brand">
-          <span className="brand-logo">Pg</span>
-          <strong>PgDesk</strong>
+          <img className="brand-logo" src={logo} alt="" />
+          <strong>Hyrax</strong>
         </div>
         <span className="spacer" />
         <button

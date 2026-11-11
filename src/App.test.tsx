@@ -871,7 +871,7 @@ describe("seguridad en producción y en el editor SQL", () => {
 
   async function loadDangerousStatement(user: ReturnType<typeof userEvent.setup>) {
     localStorage.setItem(
-      "pgdesk-history:p1",
+      "hyrax-history:p1",
       JSON.stringify([{ sql: "DELETE FROM orders", at: 1, ms: 1, ok: true }]),
     );
     readOnlyState = false;
@@ -1007,8 +1007,8 @@ describe("credenciales, TLS e historial", () => {
     await screen.findByText("Ejecutar");
     await waitFor(() => expect(calls.some((c) => c.cmd === "run_sql")).toBe(true));
     expect(screen.queryByText(/Historial \(\d+\)/)).toBeNull();
-    expect(localStorage.getItem("pgdesk-history:p1")).toBeNull();
-    expect(localStorage.getItem("pgdesk-history-enabled")).toBe("off");
+    expect(localStorage.getItem("hyrax-history:p1")).toBeNull();
+    expect(localStorage.getItem("hyrax-history-enabled")).toBe("off");
   });
 
   it("en producción el límite de tiempo no ofrece la opción sin límite", async () => {
@@ -1029,7 +1029,7 @@ describe("credenciales, TLS e historial", () => {
   });
 
   it("eliminar una conexión borra también su historial local", async () => {
-    localStorage.setItem("pgdesk-history:p1", JSON.stringify([{ sql: "SELECT 42", at: 1, ms: 1, ok: true }]));
+    localStorage.setItem("hyrax-history:p1", JSON.stringify([{ sql: "SELECT 42", at: 1, ms: 1, ok: true }]));
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("dev_erp");
@@ -1037,7 +1037,7 @@ describe("credenciales, TLS e historial", () => {
     await user.click(await screen.findByText("Eliminar", { selector: "button.danger" }));
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "delete_profile")).toBe(true));
-    await waitFor(() => expect(localStorage.getItem("pgdesk-history:p1")).toBeNull());
+    await waitFor(() => expect(localStorage.getItem("hyrax-history:p1")).toBeNull());
   });
 });
 

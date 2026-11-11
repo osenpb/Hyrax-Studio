@@ -54,7 +54,7 @@ Estado: ✅ hecho · 🟡 parcial · ⬜ pendiente
 
 ## Limitaciones conocidas
 - Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la rejilla.
-- Si un resultado supera 100.000 filas, PgDesk cancela la consulta en el servidor y muestra "100.000+"; las sentencias posteriores de un script no se ejecutan. En pantalla se guardan hasta 5.000 filas por resultado.
+- Si un resultado supera 100.000 filas, Hyrax cancela la consulta en el servidor y muestra "100.000+"; las sentencias posteriores de un script no se ejecutan. En pantalla se guardan hasta 5.000 filas por resultado.
 - La importación admite hasta 200.000 filas por archivo y 64 MB; el archivo debe estar en UTF-8.
 - Los parámetros `:nombre` se sustituyen como literales de texto escapados (no son parámetros enlazados del protocolo); no se detectan dentro de cadenas, comentarios ni bloques `$$`.
 - Las firmas de las funciones se muestran en el autocompletado, pero no se rellenan los argumentos.

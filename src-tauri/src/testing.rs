@@ -1,21 +1,21 @@
 //! Ayudas para las pruebas de integración que escriben en la base desechable `scratch`.
-//! Se activan con las variables `PGDESK_WRITE_TEST_*` y rechazan cualquier otra base.
+//! Se activan con las variables `HYRAX_WRITE_TEST_*` y rechazan cualquier otra base.
 
 use crate::db::{self, Session};
 use crate::models::{ConnectionProfile, SslMode};
 
 pub fn profile(read_only: bool) -> ConnectionProfile {
-    let var = |name: &str| std::env::var(name).expect("faltan variables PGDESK_WRITE_TEST_*");
-    let database = var("PGDESK_WRITE_TEST_DB");
+    let var = |name: &str| std::env::var(name).expect("faltan variables HYRAX_WRITE_TEST_*");
+    let database = var("HYRAX_WRITE_TEST_DB");
     assert_eq!(database, "scratch", "las pruebas de escritura solo corren contra la base desechable");
     ConnectionProfile {
         id: "w".into(),
         name: "w".into(),
-        host: var("PGDESK_WRITE_TEST_HOST"),
-        port: var("PGDESK_WRITE_TEST_PORT").parse().unwrap(),
+        host: var("HYRAX_WRITE_TEST_HOST"),
+        port: var("HYRAX_WRITE_TEST_PORT").parse().unwrap(),
         database,
-        user: var("PGDESK_WRITE_TEST_USER"),
-        password: var("PGDESK_WRITE_TEST_PASSWORD"),
+        user: var("HYRAX_WRITE_TEST_USER"),
+        password: var("HYRAX_WRITE_TEST_PASSWORD"),
         ssl_mode: SslMode::Disable,
         read_only,
         production: false,

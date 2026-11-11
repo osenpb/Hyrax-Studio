@@ -557,17 +557,17 @@ mod write_tests {
     use crate::models::{ConnectionProfile, SslMode};
 
     fn profile(read_only: bool) -> ConnectionProfile {
-        let var = |name: &str| std::env::var(name).expect("faltan variables PGDESK_WRITE_TEST_*");
-        let database = var("PGDESK_WRITE_TEST_DB");
+        let var = |name: &str| std::env::var(name).expect("faltan variables HYRAX_WRITE_TEST_*");
+        let database = var("HYRAX_WRITE_TEST_DB");
         assert_eq!(database, "scratch", "las pruebas de escritura solo corren contra la base desechable");
         ConnectionProfile {
             id: "w".into(),
             name: "w".into(),
-            host: var("PGDESK_WRITE_TEST_HOST"),
-            port: var("PGDESK_WRITE_TEST_PORT").parse().unwrap(),
+            host: var("HYRAX_WRITE_TEST_HOST"),
+            port: var("HYRAX_WRITE_TEST_PORT").parse().unwrap(),
             database,
-            user: var("PGDESK_WRITE_TEST_USER"),
-            password: var("PGDESK_WRITE_TEST_PASSWORD"),
+            user: var("HYRAX_WRITE_TEST_USER"),
+            password: var("HYRAX_WRITE_TEST_PASSWORD"),
             ssl_mode: SslMode::Disable,
             read_only,
             production: false,
@@ -614,7 +614,7 @@ mod write_tests {
     #[ignore]
     async fn applies_updates_deletes_and_inserts_atomically_with_real_types() {
         let session = db::connect(&profile(false)).await.unwrap();
-        let table = "pgdesk_edit_basic";
+        let table = "hyrax_edit_basic";
         fixture(&session, table).await;
 
         let changes = ChangeSet {
@@ -654,7 +654,7 @@ mod write_tests {
     #[ignore]
     async fn any_failure_rolls_back_every_change() {
         let session = db::connect(&profile(false)).await.unwrap();
-        let table = "pgdesk_edit_atomic";
+        let table = "hyrax_edit_atomic";
         fixture(&session, table).await;
 
         let valid_update = RowUpdate {
@@ -710,11 +710,11 @@ mod write_tests {
         let session = db::connect(&profile(false)).await.unwrap();
         run(
             &session,
-            "DROP TABLE IF EXISTS pgdesk_edit_pairs; DROP TABLE IF EXISTS pgdesk_edit_nopk; DROP VIEW IF EXISTS pgdesk_edit_view; \
-             CREATE TABLE pgdesk_edit_pairs (a int, b text, note text, PRIMARY KEY (a, b)); \
-             INSERT INTO pgdesk_edit_pairs VALUES (1,'x','one'), (1,'y','two'); \
-             CREATE TABLE pgdesk_edit_nopk (x int); INSERT INTO pgdesk_edit_nopk VALUES (1),(1); \
-             CREATE VIEW pgdesk_edit_view AS SELECT * FROM pgdesk_edit_pairs",
+            "DROP TABLE IF EXISTS hyrax_edit_pairs; DROP TABLE IF EXISTS hyrax_edit_nopk; DROP VIEW IF EXISTS hyrax_edit_view; \
+             CREATE TABLE hyrax_edit_pairs (a int, b text, note text, PRIMARY KEY (a, b)); \
+             INSERT INTO hyrax_edit_pairs VALUES (1,'x','one'), (1,'y','two'); \
+             CREATE TABLE hyrax_edit_nopk (x int); INSERT INTO hyrax_edit_nopk VALUES (1),(1); \
+             CREATE VIEW hyrax_edit_view AS SELECT * FROM hyrax_edit_pairs",
         )
         .await;
 
@@ -727,54 +727,54 @@ mod write_tests {
             deletes: vec![RowDelete { pk: pk(&[("a", "1"), ("b", "x")]) }],
             ..ChangeSet::default()
         };
-        let result = apply_changes(&session, "public", "pgdesk_edit_pairs", &update).await.unwrap();
+        let result = apply_changes(&session, "public", "hyrax_edit_pairs", &update).await.unwrap();
         assert_eq!((result.updated, result.deleted), (1, 1));
-        assert_eq!(value(&session, "SELECT string_agg(a || b || note, ',') FROM pgdesk_edit_pairs").await.as_deref(), Some("1yTWO"));
+        assert_eq!(value(&session, "SELECT string_agg(a || b || note, ',') FROM hyrax_edit_pairs").await.as_deref(), Some("1yTWO"));
 
         let no_pk = ChangeSet {
             deletes: vec![RowDelete { pk: BTreeMap::new() }],
             ..ChangeSet::default()
         };
-        let error = apply_changes(&session, "public", "pgdesk_edit_nopk", &no_pk).await.unwrap_err();
+        let error = apply_changes(&session, "public", "hyrax_edit_nopk", &no_pk).await.unwrap_err();
         assert!(error.contains("clave primaria"), "{error}");
-        assert_eq!(value(&session, "SELECT count(*)::text FROM pgdesk_edit_nopk").await.as_deref(), Some("2"));
+        assert_eq!(value(&session, "SELECT count(*)::text FROM hyrax_edit_nopk").await.as_deref(), Some("2"));
 
         let on_view = ChangeSet {
             deletes: vec![RowDelete { pk: pk(&[("a", "1"), ("b", "y")]) }],
             ..ChangeSet::default()
         };
-        let error = apply_changes(&session, "public", "pgdesk_edit_view", &on_view).await.unwrap_err();
+        let error = apply_changes(&session, "public", "hyrax_edit_view", &on_view).await.unwrap_err();
         assert!(error.contains("Solo se pueden editar tablas"), "{error}");
 
         let on_system = apply_changes(&session, "pg_catalog", "pg_class", &on_view).await.unwrap_err();
         assert!(on_system.contains("sistema"), "{on_system}");
 
-        run(&session, "DROP VIEW pgdesk_edit_view; DROP TABLE pgdesk_edit_pairs; DROP TABLE pgdesk_edit_nopk").await;
+        run(&session, "DROP VIEW hyrax_edit_view; DROP TABLE hyrax_edit_pairs; DROP TABLE hyrax_edit_nopk").await;
     }
 
     #[tokio::test]
     #[ignore]
     async fn read_only_sessions_refuse_to_apply() {
         let writer = db::connect(&profile(false)).await.unwrap();
-        fixture(&writer, "pgdesk_edit_ro").await;
+        fixture(&writer, "hyrax_edit_ro").await;
 
         let reader = db::connect(&profile(true)).await.unwrap();
         let changes = ChangeSet {
             deletes: vec![RowDelete { pk: pk(&[("id", "1")]) }],
             ..ChangeSet::default()
         };
-        let error = apply_changes(&reader, "public", "pgdesk_edit_ro", &changes).await.unwrap_err();
+        let error = apply_changes(&reader, "public", "hyrax_edit_ro", &changes).await.unwrap_err();
         assert!(error.contains("solo lectura"), "{error}");
-        assert_eq!(value(&writer, "SELECT count(*)::text FROM pgdesk_edit_ro").await.as_deref(), Some("3"));
+        assert_eq!(value(&writer, "SELECT count(*)::text FROM hyrax_edit_ro").await.as_deref(), Some("3"));
 
-        run(&writer, "DROP TABLE pgdesk_edit_ro").await;
+        run(&writer, "DROP TABLE hyrax_edit_ro").await;
     }
 
     #[tokio::test]
     #[ignore]
     async fn dry_run_shows_the_effect_and_always_rolls_back() {
         let session = db::connect(&profile(false)).await.unwrap();
-        let table = "pgdesk_edit_dry";
+        let table = "hyrax_edit_dry";
         fixture(&session, table).await;
 
         let out = db::run_sql_dry(&session, &format!("DELETE FROM {table} WHERE id <= 2 RETURNING id"), 100, 0)

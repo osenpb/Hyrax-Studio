@@ -240,9 +240,9 @@ mod tests {
         assert!(validate_path(dir.join("sin_extension").to_str().unwrap(), ExportFormat::Sql)
             .unwrap_err()
             .contains(".sql"));
-        let missing = dir.join("pgdesk-no-existe-xyz").join("a.csv");
+        let missing = dir.join("hyrax-no-existe-xyz").join("a.csv");
         assert!(validate_path(missing.to_str().unwrap(), ExportFormat::Csv).unwrap_err().contains("no existe"));
-        let folder_named_like_a_file = dir.join("pgdesk-folder.csv");
+        let folder_named_like_a_file = dir.join("hyrax-folder.csv");
         std::fs::create_dir_all(&folder_named_like_a_file).unwrap();
         assert!(validate_path(folder_named_like_a_file.to_str().unwrap(), ExportFormat::Csv)
             .unwrap_err()

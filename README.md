@@ -1,4 +1,4 @@
-# PgDesk
+# Hyrax
 
 Cliente de escritorio para PostgreSQL con las funciones esenciales de DataGrip y la ligereza de Rust. Rust + Tauri 2 en el backend, React + TypeScript en la interfaz.
 
@@ -36,7 +36,7 @@ npm test                         # interfaz, con backend simulado
 cd src-tauri && cargo test       # unitarias del backend
 ```
 
-Las pruebas de integración del backend están marcadas `#[ignore]` y necesitan servidores reales. Las de lectura usan `PGDESK_TEST_HOST/PORT/DB/USER/PASSWORD`. Las de **escritura** usan `PGDESK_WRITE_TEST_*` y se niegan a correr si la base no se llama `scratch`: úsalas solo con un Postgres desechable. Las de TLS necesitan además `PGDESK_TLS_CA_PATH`.
+Las pruebas de integración del backend están marcadas `#[ignore]` y necesitan servidores reales. Las de lectura usan `HYRAX_TEST_HOST/PORT/DB/USER/PASSWORD`. Las de **escritura** usan `HYRAX_WRITE_TEST_*` y se niegan a correr si la base no se llama `scratch`: úsalas solo con un Postgres desechable. Las de TLS necesitan además `HYRAX_TLS_CA_PATH`.
 
 ```
 cargo test -- --include-ignored

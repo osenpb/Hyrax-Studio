@@ -6,7 +6,7 @@ Please do not open a public issue for security problems. Report them privately t
 
 ## Scope
 
-PgDesk is a desktop client that stores connection settings locally and keeps passwords in the operating system credential store. Reports about the following are in scope:
+Hyrax is a desktop client that stores connection settings locally and keeps passwords in the operating system credential store. Reports about the following are in scope:
 
 - credentials leaking to disk, logs, the web view or the network
 - SQL built from unescaped input

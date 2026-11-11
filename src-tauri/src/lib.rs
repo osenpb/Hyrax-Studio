@@ -53,5 +53,5 @@ pub fn run() {
             commands::save_text_file,
         ])
         .run(tauri::generate_context!())
-        .expect("error al iniciar PgDesk");
+        .expect("error al iniciar Hyrax");
 }

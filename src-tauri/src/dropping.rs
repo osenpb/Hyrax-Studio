@@ -90,7 +90,7 @@ pub async fn drop_object(
         rollback(session).await;
         let mut text = db::describe(&e);
         if e.as_db_error().is_some_and(|d| d.code() == &SqlState::LOCK_NOT_AVAILABLE) {
-            text.push_str("\nPgDesk: otra sesión tiene bloqueado el objeto; inténtalo de nuevo cuando termine.");
+            text.push_str("\nHyrax: otra sesión tiene bloqueado el objeto; inténtalo de nuevo cuando termine.");
         }
         return Err(text);
     }
@@ -118,7 +118,7 @@ pub async fn drop_database(profile: &ConnectionProfile, database: &str, force: b
         let mut text = db::describe(&e);
         if e.as_db_error().is_some_and(|d| d.code() == &SqlState::OBJECT_IN_USE) {
             text.push_str(
-                "\nPgDesk: hay otras conexiones abiertas a esa base (de otras aplicaciones o personas). Ciérralas o marca «Forzar» para desconectarlas.",
+                "\nHyrax: hay otras conexiones abiertas a esa base (de otras aplicaciones o personas). Ciérralas o marca «Forzar» para desconectarlas.",
             );
         }
         return Err(text);
@@ -190,17 +190,17 @@ mod tests {
         let session = db::connect(&profile(false)).await.unwrap();
         run(
             &session,
-            "DROP SCHEMA IF EXISTS pgdesk_drop CASCADE; CREATE SCHEMA pgdesk_drop; \
-             CREATE TABLE pgdesk_drop.parent (id int PRIMARY KEY); \
-             CREATE TABLE pgdesk_drop.child (pid int REFERENCES pgdesk_drop.parent(id)); \
-             CREATE VIEW pgdesk_drop.v AS SELECT * FROM pgdesk_drop.parent; \
-             CREATE TABLE pgdesk_drop.solo (a int)",
+            "DROP SCHEMA IF EXISTS hyrax_drop CASCADE; CREATE SCHEMA hyrax_drop; \
+             CREATE TABLE hyrax_drop.parent (id int PRIMARY KEY); \
+             CREATE TABLE hyrax_drop.child (pid int REFERENCES hyrax_drop.parent(id)); \
+             CREATE VIEW hyrax_drop.v AS SELECT * FROM hyrax_drop.parent; \
+             CREATE TABLE hyrax_drop.solo (a int)",
         )
         .await;
         let exists = |name: &'static str| {
             let session = &session;
             async move {
-                value(session, &format!("SELECT to_regclass('pgdesk_drop.{name}') IS NOT NULL"))
+                value(session, &format!("SELECT to_regclass('hyrax_drop.{name}') IS NOT NULL"))
                     .await
                     .unwrap()
                     == "t"
@@ -208,65 +208,65 @@ mod tests {
         };
 
         // Sin el nombre exacto no se toca nada.
-        let wrong = drop_object(&session, "pgdesk_drop", "solo", "table", false, "otro").await.unwrap_err();
+        let wrong = drop_object(&session, "hyrax_drop", "solo", "table", false, "otro").await.unwrap_err();
         assert!(wrong.contains("nombre exacto"), "{wrong}");
         assert!(exists("solo").await);
 
         // Una sesión de solo lectura se niega.
         let read_only = db::connect(&profile(true)).await.unwrap();
-        let refused = drop_object(&read_only, "pgdesk_drop", "solo", "table", false, "solo").await.unwrap_err();
+        let refused = drop_object(&read_only, "hyrax_drop", "solo", "table", false, "solo").await.unwrap_err();
         assert!(refused.contains("solo lectura"), "{refused}");
         assert!(exists("solo").await);
 
         // Sin CASCADE, si algo depende, falla y no se borra nada.
-        let blocked = drop_object(&session, "pgdesk_drop", "parent", "table", false, "parent").await.unwrap_err();
+        let blocked = drop_object(&session, "hyrax_drop", "parent", "table", false, "parent").await.unwrap_err();
         assert!(blocked.to_lowercase().contains("depend"), "{blocked}");
         assert!(exists("parent").await && exists("child").await && exists("v").await);
 
         // El tipo debe coincidir con el objeto.
-        let kind = drop_object(&session, "pgdesk_drop", "child", "view", false, "child").await.unwrap_err();
+        let kind = drop_object(&session, "hyrax_drop", "child", "view", false, "child").await.unwrap_err();
         assert!(kind.to_lowercase().contains("view"), "{kind}");
         assert!(exists("child").await);
 
         // Con CASCADE se borra la tabla y lo que dependía (la vista y la clave foránea), no la tabla hija.
-        let sql = drop_object(&session, "pgdesk_drop", "parent", "table", true, "parent").await.unwrap();
-        assert_eq!(sql, "DROP TABLE \"pgdesk_drop\".\"parent\" CASCADE");
+        let sql = drop_object(&session, "hyrax_drop", "parent", "table", true, "parent").await.unwrap();
+        assert_eq!(sql, "DROP TABLE \"hyrax_drop\".\"parent\" CASCADE");
         assert!(!exists("parent").await && !exists("v").await && exists("child").await);
         assert_eq!(
-            value(&session, "SELECT count(*) FROM pg_constraint WHERE conrelid = 'pgdesk_drop.child'::regclass AND contype = 'f'")
+            value(&session, "SELECT count(*) FROM pg_constraint WHERE conrelid = 'hyrax_drop.child'::regclass AND contype = 'f'")
                 .await
                 .as_deref(),
             Some("0")
         );
 
-        assert!(drop_object(&session, "pgdesk_drop", "solo", "table", false, "solo").await.is_ok());
+        assert!(drop_object(&session, "hyrax_drop", "solo", "table", false, "solo").await.is_ok());
         assert!(!exists("solo").await);
         assert!(drop_object(&session, "pg_catalog", "pg_class", "table", false, "pg_class").await.is_err());
         // Una transacción abortada por un error no deja la sesión rota.
         assert_eq!(value(&session, "SELECT 1").await.as_deref(), Some("1"));
-        run(&session, "DROP SCHEMA pgdesk_drop CASCADE").await;
+        run(&session, "DROP SCHEMA hyrax_drop CASCADE").await;
 
         // Bases de datos: se eliminan desde la base de mantenimiento.
-        run(&session, "DROP DATABASE IF EXISTS pgdesk_drop_me").await;
-        run(&session, "CREATE DATABASE pgdesk_drop_me").await;
+        run(&session, "DROP DATABASE IF EXISTS hyrax_drop_me").await;
+        run(&session, "CREATE DATABASE hyrax_drop_me").await;
         let mut other = profile(false);
-        other.database = "pgdesk_drop_me".to_string();
+        other.database = "hyrax_drop_me".to_string();
         let held = db::connect(&other).await.unwrap();
-        assert_eq!(value(&held, "SELECT current_database()").await.as_deref(), Some("pgdesk_drop_me"));
+        assert_eq!(value(&held, "SELECT current_database()").await.as_deref(), Some("hyrax_drop_me"));
 
-        let wrong = drop_database(&profile(false), "pgdesk_drop_me", false, "pgdesk_drop").await.unwrap_err();
+        let wrong = drop_database(&profile(false), "hyrax_drop_me", false, "hyrax_drop").await.unwrap_err();
         assert!(wrong.contains("nombre exacto"), "{wrong}");
-        let in_use = drop_database(&profile(false), "pgdesk_drop_me", false, "pgdesk_drop_me").await.unwrap_err();
+        let in_use = drop_database(&profile(false), "hyrax_drop_me", false, "hyrax_drop_me").await.unwrap_err();
         assert!(in_use.contains("otras conexiones"), "{in_use}");
         async fn present(session: &Session) -> String {
-            crate::testing::value(session, "SELECT count(*) FROM pg_database WHERE datname = 'pgdesk_drop_me'")
+            crate::testing::value(session, "SELECT count(*) FROM pg_database WHERE datname = 'hyrax_drop_me'")
                 .await
                 .unwrap()
         }
         assert_eq!(present(&session).await, "1");
 
-        let sql = drop_database(&profile(false), "pgdesk_drop_me", true, "pgdesk_drop_me").await.unwrap();
-        assert_eq!(sql, "DROP DATABASE \"pgdesk_drop_me\" WITH (FORCE)");
+        let sql = drop_database(&profile(false), "hyrax_drop_me", true, "hyrax_drop_me").await.unwrap();
+        assert_eq!(sql, "DROP DATABASE \"hyrax_drop_me\" WITH (FORCE)");
         assert_eq!(present(&session).await, "0");
         drop(held);
         assert!(drop_database(&profile(false), "template1", true, "template1").await.is_err());

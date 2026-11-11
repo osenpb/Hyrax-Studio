@@ -7,7 +7,7 @@ export interface HistoryItem {
 
 const MAX_ITEMS = 100;
 
-const ENABLED_KEY = "pgdesk-history-enabled";
+const ENABLED_KEY = "hyrax-history-enabled";
 
 export function historyEnabled(): boolean {
   try {
@@ -25,7 +25,7 @@ export function setHistoryEnabled(enabled: boolean): void {
   }
 }
 
-const storageKey = (profileId: string) => `pgdesk-history:${profileId}`;
+const storageKey = (profileId: string) => `hyrax-history:${profileId}`;
 
 export function loadHistory(profileId: string): HistoryItem[] {
   try {

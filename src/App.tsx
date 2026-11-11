@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import logoLarge from "./assets/hyrax-256.png";
 import {
   api,
   databaseOfSession,
@@ -62,7 +63,7 @@ type Theme = "auto" | "light" | "dark";
 
 function loadTheme(): Theme {
   try {
-    const saved = localStorage.getItem("pgdesk-theme");
+    const saved = localStorage.getItem("hyrax-theme");
     return saved === "light" || saved === "dark" ? saved : "auto";
   } catch {
     return "auto";
@@ -94,7 +95,7 @@ export default function App() {
     if (theme === "auto") root.removeAttribute("data-theme");
     else root.setAttribute("data-theme", theme);
     try {
-      localStorage.setItem("pgdesk-theme", theme);
+      localStorage.setItem("hyrax-theme", theme);
     } catch {
       return;
     }
@@ -501,8 +502,8 @@ export default function App() {
         <div className="tab-content">
           {tabs.length === 0 && (
             <div className="welcome">
-              <div className="welcome-logo">Pg</div>
-              <h1>PgDesk</h1>
+              <img className="welcome-logo" src={logoLarge} alt="" />
+              <h1>Hyrax</h1>
               <p>Cliente PostgreSQL de escritorio</p>
               <ul>
                 <li>
@@ -611,7 +612,7 @@ export default function App() {
           <div className="modal small" onMouseDown={(e) => e.stopPropagation()}>
             <h2>Eliminar conexión</h2>
             <p>
-              ¿Eliminar <strong>{toDelete.name}</strong>? Solo se borra de PgDesk, no de la base de datos.
+              ¿Eliminar <strong>{toDelete.name}</strong>? Solo se borra de Hyrax, no de la base de datos.
             </p>
             <div className="modal-actions">
               <span className="spacer" />

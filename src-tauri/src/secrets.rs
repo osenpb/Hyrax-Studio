@@ -1,6 +1,6 @@
 use keyring::{Entry, Error};
 
-const SERVICE: &str = "pgdesk";
+const SERVICE: &str = "hyrax";
 
 fn entry(profile_id: &str) -> Result<Entry, String> {
     Entry::new(SERVICE, profile_id)
@@ -13,12 +13,27 @@ pub fn set(profile_id: &str, password: &str) -> Result<(), String> {
         .map_err(|e| format!("No se pudo guardar la contraseña en el almacén del sistema: {e}"))
 }
 
+/// Nombre del servicio antes de llamarse Hyrax; se lee una vez y se migra.
+const LEGACY_SERVICE: &str = "pgdesk";
+
 pub fn get(profile_id: &str) -> Result<Option<String>, String> {
     match entry(profile_id)?.get_password() {
         Ok(password) => Ok(Some(password)),
-        Err(Error::NoEntry) => Ok(None),
+        Err(Error::NoEntry) => migrate_legacy(profile_id),
         Err(e) => Err(format!("No se pudo leer la contraseña del almacén del sistema: {e}")),
     }
+}
+
+fn migrate_legacy(profile_id: &str) -> Result<Option<String>, String> {
+    let Ok(old) = Entry::new(LEGACY_SERVICE, profile_id) else {
+        return Ok(None);
+    };
+    let Ok(password) = old.get_password() else {
+        return Ok(None);
+    };
+    set(profile_id, &password)?;
+    let _ = old.delete_credential();
+    Ok(Some(password))
 }
 
 pub fn delete(profile_id: &str) -> Result<(), String> {
@@ -34,7 +49,7 @@ mod tests {
 
     #[test]
     fn password_roundtrip_through_the_os_vault() {
-        let id = format!("pgdesk-test-{}", std::process::id());
+        let id = format!("hyrax-test-{}", std::process::id());
         let _ = delete(&id);
         assert_eq!(get(&id).unwrap(), None);
 

@@ -594,24 +594,24 @@ mod tests {
     }
 
     const FIXTURE: &str = "\
-        DROP SCHEMA IF EXISTS pgdesk_s9 CASCADE; DROP SCHEMA IF EXISTS pgdesk_s9_copy CASCADE; \
-        CREATE SCHEMA pgdesk_s9; CREATE SCHEMA pgdesk_s9_copy; \
-        CREATE TABLE pgdesk_s9.customers (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, \
+        DROP SCHEMA IF EXISTS hyrax_s9 CASCADE; DROP SCHEMA IF EXISTS hyrax_s9_copy CASCADE; \
+        CREATE SCHEMA hyrax_s9; CREATE SCHEMA hyrax_s9_copy; \
+        CREATE TABLE hyrax_s9.customers (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, \
             email text NOT NULL UNIQUE, name text COLLATE \"C\", created timestamptz DEFAULT now()); \
-        COMMENT ON TABLE pgdesk_s9.customers IS 'Clientes del ''sistema'''; \
-        COMMENT ON COLUMN pgdesk_s9.customers.email IS 'Correo; único'; \
-        CREATE TABLE pgdesk_s9.orders (id serial PRIMARY KEY, \
-            customer_id bigint NOT NULL REFERENCES pgdesk_s9.customers(id) ON DELETE CASCADE ON UPDATE RESTRICT, \
+        COMMENT ON TABLE hyrax_s9.customers IS 'Clientes del ''sistema'''; \
+        COMMENT ON COLUMN hyrax_s9.customers.email IS 'Correo; único'; \
+        CREATE TABLE hyrax_s9.orders (id serial PRIMARY KEY, \
+            customer_id bigint NOT NULL REFERENCES hyrax_s9.customers(id) ON DELETE CASCADE ON UPDATE RESTRICT, \
             total numeric(10,2) CHECK (total >= 0), net numeric GENERATED ALWAYS AS (total * 0.8) STORED, tags text[]); \
-        CREATE INDEX orders_customer_idx ON pgdesk_s9.orders (customer_id); \
-        CREATE TABLE pgdesk_s9.items (order_id int, line int, PRIMARY KEY (order_id, line), \
-            FOREIGN KEY (order_id) REFERENCES pgdesk_s9.orders(id)); \
-        CREATE VIEW pgdesk_s9.v_orders AS SELECT id, total FROM pgdesk_s9.orders; \
-        CREATE MATERIALIZED VIEW pgdesk_s9.mv AS SELECT 1 AS x; \
-        CREATE SEQUENCE pgdesk_s9.free_seq START 5 INCREMENT 2; \
-        CREATE FUNCTION pgdesk_s9.double_it(a int) RETURNS int LANGUAGE sql AS 'SELECT a*2'; \
-        CREATE FUNCTION pgdesk_s9.trg() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; \
-        CREATE TRIGGER orders_trg BEFORE INSERT ON pgdesk_s9.orders FOR EACH ROW EXECUTE FUNCTION pgdesk_s9.trg();";
+        CREATE INDEX orders_customer_idx ON hyrax_s9.orders (customer_id); \
+        CREATE TABLE hyrax_s9.items (order_id int, line int, PRIMARY KEY (order_id, line), \
+            FOREIGN KEY (order_id) REFERENCES hyrax_s9.orders(id)); \
+        CREATE VIEW hyrax_s9.v_orders AS SELECT id, total FROM hyrax_s9.orders; \
+        CREATE MATERIALIZED VIEW hyrax_s9.mv AS SELECT 1 AS x; \
+        CREATE SEQUENCE hyrax_s9.free_seq START 5 INCREMENT 2; \
+        CREATE FUNCTION hyrax_s9.double_it(a int) RETURNS int LANGUAGE sql AS 'SELECT a*2'; \
+        CREATE FUNCTION hyrax_s9.trg() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$; \
+        CREATE TRIGGER orders_trg BEFORE INSERT ON hyrax_s9.orders FOR EACH ROW EXECUTE FUNCTION hyrax_s9.trg();";
 
     #[tokio::test]
     #[ignore]
@@ -622,7 +622,7 @@ mod tests {
         let client = &session.client;
 
         let objects = search_objects(client).await.unwrap();
-        let find = |name: &str| objects.iter().find(|o| o.schema == "pgdesk_s9" && o.name == name);
+        let find = |name: &str| objects.iter().find(|o| o.schema == "hyrax_s9" && o.name == name);
         assert_eq!(find("customers").unwrap().kind, "table");
         assert_eq!(find("v_orders").unwrap().kind, "view");
         assert_eq!(find("mv").unwrap().kind, "matview");
@@ -633,7 +633,7 @@ mod tests {
         assert!(find("orders_id_seq").is_none(), "las secuencias de serial/identity no se listan");
         assert!(objects.iter().all(|o| o.schema != "pg_catalog" && o.schema != "information_schema"));
 
-        let orders = table_structure(client, "pgdesk_s9", "orders").await.unwrap();
+        let orders = table_structure(client, "hyrax_s9", "orders").await.unwrap();
         assert_eq!(orders.kind, "table");
         assert_eq!(orders.columns.len(), 5);
         assert!(orders.columns.iter().find(|c| c.name == "net").unwrap().generated);
@@ -649,23 +649,23 @@ mod tests {
         assert_eq!(orders.triggers.len(), 1);
         assert!(orders.stats.total_bytes.unwrap() > 0);
 
-        let customers = table_structure(client, "pgdesk_s9", "customers").await.unwrap();
+        let customers = table_structure(client, "hyrax_s9", "customers").await.unwrap();
         assert_eq!(customers.comment.as_deref(), Some("Clientes del 'sistema'"));
         assert_eq!(customers.columns[0].identity.as_deref(), Some("ALWAYS"));
         assert_eq!(customers.columns[2].collation.as_deref(), Some("C"));
         assert_eq!(customers.referenced_by[0].table, "orders");
 
-        let items = table_structure(client, "pgdesk_s9", "items").await.unwrap();
+        let items = table_structure(client, "hyrax_s9", "items").await.unwrap();
         assert_eq!(items.columns.iter().filter(|c| c.is_primary_key).count(), 2, "clave compuesta");
 
-        let view = table_structure(client, "pgdesk_s9", "v_orders").await.unwrap();
+        let view = table_structure(client, "hyrax_s9", "v_orders").await.unwrap();
         assert_eq!(view.kind, "view");
         assert!(view.stats.total_bytes.is_none(), "las vistas no tienen tamaño");
-        assert!(table_structure(client, "pgdesk_s9", "free_seq").await.is_err());
-        assert!(table_structure(client, "pgdesk_s9", "no_existe").await.unwrap_err().contains("no existe"));
+        assert!(table_structure(client, "hyrax_s9", "free_seq").await.is_err());
+        assert!(table_structure(client, "hyrax_s9", "no_existe").await.unwrap_err().contains("no existe"));
 
         let fks = completion_fks(client).await.unwrap();
-        assert!(fks.iter().any(|f| f.schema == "pgdesk_s9" && f.table == "orders" && f.ref_table == "customers"));
+        assert!(fks.iter().any(|f| f.schema == "hyrax_s9" && f.table == "orders" && f.ref_table == "customers"));
         assert!(fks.iter().all(|f| f.schema != "pg_catalog"));
     }
 
@@ -677,35 +677,35 @@ mod tests {
         run(&session, FIXTURE).await;
         let client = &session.client;
 
-        let customers = object_ddl(client, "pgdesk_s9", "customers", "table", None).await.unwrap();
+        let customers = object_ddl(client, "hyrax_s9", "customers", "table", None).await.unwrap();
         assert!(customers.contains("GENERATED ALWAYS AS IDENTITY"), "{customers}");
         assert!(customers.contains("COLLATE \"C\""), "{customers}");
         assert!(customers.contains("UNIQUE (email)"), "{customers}");
-        assert!(customers.contains("COMMENT ON TABLE \"pgdesk_s9\".\"customers\" IS 'Clientes del ''sistema'''"), "{customers}");
-        assert!(customers.contains("COMMENT ON COLUMN \"pgdesk_s9\".\"customers\".\"email\" IS 'Correo; único'"), "{customers}");
+        assert!(customers.contains("COMMENT ON TABLE \"hyrax_s9\".\"customers\" IS 'Clientes del ''sistema'''"), "{customers}");
+        assert!(customers.contains("COMMENT ON COLUMN \"hyrax_s9\".\"customers\".\"email\" IS 'Correo; único'"), "{customers}");
 
-        let orders = object_ddl(client, "pgdesk_s9", "orders", "table", None).await.unwrap();
+        let orders = object_ddl(client, "hyrax_s9", "orders", "table", None).await.unwrap();
         assert!(orders.contains("GENERATED ALWAYS AS ((total * 0.8)) STORED"), "{orders}");
-        assert!(orders.contains("FOREIGN KEY (customer_id) REFERENCES pgdesk_s9.customers(id) ON UPDATE RESTRICT ON DELETE CASCADE"), "{orders}");
+        assert!(orders.contains("FOREIGN KEY (customer_id) REFERENCES hyrax_s9.customers(id) ON UPDATE RESTRICT ON DELETE CASCADE"), "{orders}");
         assert!(orders.contains("CREATE INDEX orders_customer_idx"), "{orders}");
         assert!(orders.contains("CREATE TRIGGER orders_trg"), "{orders}");
 
         // El DDL debe poder ejecutarse: se recrean las tablas en otro schema y se compara la estructura.
         for table in ["customers", "orders", "items"] {
-            let ddl = object_ddl(client, "pgdesk_s9", table, "table", None).await.unwrap();
+            let ddl = object_ddl(client, "hyrax_s9", table, "table", None).await.unwrap();
             let moved = ddl.replace(
-                &format!("\"pgdesk_s9\".\"{table}\""),
-                &format!("\"pgdesk_s9_copy\".\"{table}\""),
+                &format!("\"hyrax_s9\".\"{table}\""),
+                &format!("\"hyrax_s9_copy\".\"{table}\""),
             ).replace(
-                &format!("ON pgdesk_s9.{table} "),
-                &format!("ON pgdesk_s9_copy.{table} "),
+                &format!("ON hyrax_s9.{table} "),
+                &format!("ON hyrax_s9_copy.{table} "),
             ).replace(
-                "REFERENCES pgdesk_s9.",
-                "REFERENCES pgdesk_s9_copy.",
-            ).replace("ON pgdesk_s9.orders ", "ON pgdesk_s9_copy.orders ");
+                "REFERENCES hyrax_s9.",
+                "REFERENCES hyrax_s9_copy.",
+            ).replace("ON hyrax_s9.orders ", "ON hyrax_s9_copy.orders ");
             run(&session, &moved).await;
-            let original = table_structure(client, "pgdesk_s9", table).await.unwrap();
-            let copy = table_structure(client, "pgdesk_s9_copy", table).await.unwrap();
+            let original = table_structure(client, "hyrax_s9", table).await.unwrap();
+            let copy = table_structure(client, "hyrax_s9_copy", table).await.unwrap();
             let shape = |s: &TableStructure| {
                 (
                     s.columns.iter().map(|c| (c.name.clone(), c.data_type.clone(), c.nullable, c.is_primary_key, c.identity.clone(), c.generated, c.collation.clone())).collect::<Vec<_>>(),
@@ -717,27 +717,27 @@ mod tests {
             assert_eq!(shape(&original), shape(&copy), "la copia de {table} difiere del original");
         }
 
-        let view = object_ddl(client, "pgdesk_s9", "v_orders", "view", None).await.unwrap();
-        assert!(view.starts_with("CREATE OR REPLACE VIEW \"pgdesk_s9\".\"v_orders\" AS"), "{view}");
+        let view = object_ddl(client, "hyrax_s9", "v_orders", "view", None).await.unwrap();
+        assert!(view.starts_with("CREATE OR REPLACE VIEW \"hyrax_s9\".\"v_orders\" AS"), "{view}");
         run(&session, &view).await;
 
-        let mv = object_ddl(client, "pgdesk_s9", "mv", "matview", None).await.unwrap();
-        assert!(mv.starts_with("CREATE MATERIALIZED VIEW \"pgdesk_s9\".\"mv\" AS") && mv.contains("WITH DATA;"), "{mv}");
-        run(&session, &format!("DROP MATERIALIZED VIEW pgdesk_s9.mv; {mv}")).await;
+        let mv = object_ddl(client, "hyrax_s9", "mv", "matview", None).await.unwrap();
+        assert!(mv.starts_with("CREATE MATERIALIZED VIEW \"hyrax_s9\".\"mv\" AS") && mv.contains("WITH DATA;"), "{mv}");
+        run(&session, &format!("DROP MATERIALIZED VIEW hyrax_s9.mv; {mv}")).await;
 
-        let seq = object_ddl(client, "pgdesk_s9", "free_seq", "sequence", None).await.unwrap();
+        let seq = object_ddl(client, "hyrax_s9", "free_seq", "sequence", None).await.unwrap();
         assert!(seq.contains("START WITH 5") && seq.contains("INCREMENT BY 2") && seq.contains("NO CYCLE"), "{seq}");
-        run(&session, &format!("DROP SEQUENCE pgdesk_s9.free_seq; {seq}")).await;
-        assert_eq!(value(&session, "SELECT nextval('pgdesk_s9.free_seq')").await.as_deref(), Some("5"));
+        run(&session, &format!("DROP SEQUENCE hyrax_s9.free_seq; {seq}")).await;
+        assert_eq!(value(&session, "SELECT nextval('hyrax_s9.free_seq')").await.as_deref(), Some("5"));
 
         let oid: u32 = search_objects(client).await.unwrap().iter().find(|o| o.name == "double_it").unwrap().oid;
-        let func = object_ddl(client, "pgdesk_s9", "double_it", "function", Some(oid)).await.unwrap();
-        assert!(func.contains("CREATE OR REPLACE FUNCTION pgdesk_s9.double_it"), "{func}");
+        let func = object_ddl(client, "hyrax_s9", "double_it", "function", Some(oid)).await.unwrap();
+        assert!(func.contains("CREATE OR REPLACE FUNCTION hyrax_s9.double_it"), "{func}");
         run(&session, &func).await;
-        assert_eq!(value(&session, "SELECT pgdesk_s9.double_it(21)").await.as_deref(), Some("42"));
-        assert!(object_ddl(client, "pgdesk_s9", "double_it", "function", None).await.is_err());
+        assert_eq!(value(&session, "SELECT hyrax_s9.double_it(21)").await.as_deref(), Some("42"));
+        assert!(object_ddl(client, "hyrax_s9", "double_it", "function", None).await.is_err());
 
-        run(&session, "DROP SCHEMA pgdesk_s9 CASCADE; DROP SCHEMA pgdesk_s9_copy CASCADE").await;
+        run(&session, "DROP SCHEMA hyrax_s9 CASCADE; DROP SCHEMA hyrax_s9_copy CASCADE").await;
     }
 
     #[test]

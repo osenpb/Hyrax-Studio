@@ -1,6 +1,6 @@
 # Revisión de seguridad (2026-11-10)
 
-Alcance: PgDesk v0.1 tras las etapas 1–8, pensando en su uso contra bases de producción. Método: lectura del código (construcción de SQL, datos que cruzan al webview, almacenamiento de credenciales, TLS, configuración de Tauri), auditoría de dependencias (`npm audit`, `cargo audit`) y pruebas contra Postgres reales, incluida una prueba de punta a punta con la aplicación real manejada por el depurador de WebView2.
+Alcance: Hyrax v0.1 tras las etapas 1–8, pensando en su uso contra bases de producción. Método: lectura del código (construcción de SQL, datos que cruzan al webview, almacenamiento de credenciales, TLS, configuración de Tauri), auditoría de dependencias (`npm audit`, `cargo audit`) y pruebas contra Postgres reales, incluida una prueba de punta a punta con la aplicación real manejada por el depurador de WebView2.
 
 ## Resumen
 
@@ -12,7 +12,7 @@ No se encontraron vulnerabilidades explotables en las dependencias ni inyección
 |---|---|---|---|
 | S-01 | Alta | Las contraseñas se guardaban en texto plano en `profiles.json` y además se enviaban al webview con cada listado de conexiones | **Corregido.** Van al Administrador de credenciales de Windows (Keychain / Secret Service en otros sistemas). Nunca llegan al webview (solo un indicador "tiene contraseña"). El archivo no las contiene (hay un test que lo comprueba). Las contraseñas antiguas se migran solas, releyéndolas antes de borrarlas del archivo |
 | S-02 | Alta | "SSL requerido" cifraba pero aceptaba cualquier certificado: vulnerable a un intermediario | **Mitigado.** Nuevo modo "Cifrado y verificar el certificado" (cadena y nombre de host; CA propia opcional). El modo sin verificar sigue existiendo con un aviso visible. Probado contra un servidor con certificado autofirmado: sin la CA rechaza, con la CA conecta |
-| S-03 | Alta | El modo solo lectura se podía apagar con SQL (`SET default_transaction_read_only = off`, `BEGIN READ WRITE`, `set_config`, `RESET ALL`, `DO`…) | **Corregido contra descuidos.** El servidor de PgDesk rechaza esas sentencias mientras la sesión está en solo lectura. No es una barrera contra un atacante: ver riesgos residuales |
+| S-03 | Alta | El modo solo lectura se podía apagar con SQL (`SET default_transaction_read_only = off`, `BEGIN READ WRITE`, `set_config`, `RESET ALL`, `DO`…) | **Corregido contra descuidos.** El servidor de Hyrax rechaza esas sentencias mientras la sesión está en solo lectura. No es una barrera contra un atacante: ver riesgos residuales |
 | S-04 | Media | La confirmación de producción (escribir el nombre de la base) solo existía en la interfaz | **Corregido.** El backend la exige y rechaza el intento aunque se llame directamente al comando (comprobado en la aplicación real) |
 | S-05 | Media | Sin política de seguridad de contenido (CSP) en la ventana | **Corregido.** CSP estricta: sin `unsafe-eval`, sin scripts en línea, sin conexiones ni imágenes ni marcos externos. Verificada en un binario con los recursos embebidos |
 | S-06 | Media | La vuelta automática a solo lectura a los 10 minutos dependía de un temporizador de la interfaz | **Corregido.** Además se aplica en el servidor en cada operación |
@@ -47,11 +47,11 @@ Superficie nueva y cómo se acotó. Esta actualización es una revisión del dis
 | Borrar de más con `CASCADE` | Es una casilla aparte, apagada por defecto, y el SQL mostrado lo refleja. Sin ella, si algo depende del objeto, falla y no se borra nada |
 | Dejar un bloqueo colgado | `lock_timeout` de 5 s dentro de una transacción; si falla se revierte |
 | Inyección por el nombre | Identificadores con `quote_ident` (con prueba de un nombre malicioso). Solo se acepta un conjunto fijo de tipos de objeto; se rechazan los schemas del sistema y las bases plantilla |
-| Eliminar una base a la que uno mismo está conectado | PgDesk cierra su propia sesión a esa base y elimina desde una conexión de mantenimiento (`postgres`, o `template1` si se elimina `postgres`). Si hay otras conexiones ajenas, falla con un mensaje claro; «Forzar» (`WITH (FORCE)`, PostgreSQL 13+) las desconecta y es una casilla aparte |
+| Eliminar una base a la que uno mismo está conectado | Hyrax cierra su propia sesión a esa base y elimina desde una conexión de mantenimiento (`postgres`, o `template1` si se elimina `postgres`). Si hay otras conexiones ajenas, falla con un mensaje claro; «Forzar» (`WITH (FORCE)`, PostgreSQL 13+) las desconecta y es una casilla aparte |
 
 Esto **no** sustituye a la cuenta sin permisos de escritura: con una cuenta de solo lectura, el servidor rechaza todo esto de todos modos. Tampoco hay papelera ni deshacer: si no hay copia de seguridad, lo eliminado no vuelve.
 
-Riesgo residual nuevo: el contenido de un CSV/JSON importado se inserta tal cual; si contiene datos que el usuario no debería cargar, PgDesk no lo detecta. La vista previa y el ensayo existen para revisarlo antes.
+Riesgo residual nuevo: el contenido de un CSV/JSON importado se inserta tal cual; si contiene datos que el usuario no debería cargar, Hyrax no lo detecta. La vista previa y el ensayo existen para revisarlo antes.
 
 ## Controles que protegen en producción
 
@@ -66,7 +66,7 @@ Riesgo residual nuevo: el contenido de un CSV/JSON importado se inserta tal cual
 ## Riesgos residuales y límites
 
 1. **El solo lectura es un guardarraíl.** Se implementa con `default_transaction_read_only` de Postgres más un filtro de sentencias. Un usuario con conocimiento puede encontrar otra forma de saltárselo (por ejemplo, funciones del lado del servidor). No lo uses como única protección frente a alguien que quiera escribir.
-2. **La confirmación de producción depende de que marques la conexión como producción.** PgDesk no puede adivinarlo.
+2. **La confirmación de producción depende de que marques la conexión como producción.** Hyrax no puede adivinarlo.
 3. **Si usas `ssl=require`** (sin verificar), un intermediario en la red puede suplantar al servidor.
 4. **El historial de consultas** queda en claro en tu equipo mientras esté activado.
 5. **No se probó** contra un clúster de producción real, ni en Linux ni en macOS, ni con un instalador firmado. La prueba de punta a punta usó un Postgres desechable y una compilación con los recursos embebidos, no un instalador.
@@ -77,12 +77,12 @@ Riesgo residual nuevo: el contenido de un CSV/JSON importado se inserta tal cual
 Crea una cuenta que no pueda escribir; es la única barrera real:
 
 ```sql
-CREATE ROLE pgdesk_ro LOGIN PASSWORD '...';
-GRANT CONNECT ON DATABASE nombre_de_la_base TO pgdesk_ro;
-GRANT pg_read_all_data TO pgdesk_ro;
-ALTER ROLE pgdesk_ro SET default_transaction_read_only = on;
-ALTER ROLE pgdesk_ro SET statement_timeout = '60s';
-ALTER ROLE pgdesk_ro SET idle_in_transaction_session_timeout = '30s';
+CREATE ROLE hyrax_ro LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE nombre_de_la_base TO hyrax_ro;
+GRANT pg_read_all_data TO hyrax_ro;
+ALTER ROLE hyrax_ro SET default_transaction_read_only = on;
+ALTER ROLE hyrax_ro SET statement_timeout = '60s';
+ALTER ROLE hyrax_ro SET idle_in_transaction_session_timeout = '30s';
 ```
 
 (`pg_read_all_data` requiere PostgreSQL 14 o superior; en versiones anteriores hay que dar `SELECT` por esquema.)

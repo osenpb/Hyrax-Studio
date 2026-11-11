@@ -186,15 +186,15 @@ mod tests {
         let session = db::connect(&profile(false)).await.unwrap();
         run(
             &session,
-            "DROP SCHEMA IF EXISTS pgdesk_imp CASCADE; CREATE SCHEMA pgdesk_imp; \
-             CREATE TABLE pgdesk_imp.t (id int PRIMARY KEY, name text, price numeric(10,2), born date, meta jsonb, tags text[]); \
-             CREATE TABLE pgdesk_imp.no_pk (a int, b text); \
-             CREATE VIEW pgdesk_imp.v AS SELECT * FROM pgdesk_imp.t",
+            "DROP SCHEMA IF EXISTS hyrax_imp CASCADE; CREATE SCHEMA hyrax_imp; \
+             CREATE TABLE hyrax_imp.t (id int PRIMARY KEY, name text, price numeric(10,2), born date, meta jsonb, tags text[]); \
+             CREATE TABLE hyrax_imp.no_pk (a int, b text); \
+             CREATE VIEW hyrax_imp.v AS SELECT * FROM hyrax_imp.t",
         )
         .await;
         let count = |table: &'static str| {
             let session = &session;
-            async move { value(session, &format!("SELECT count(*) FROM pgdesk_imp.{table}")).await.unwrap() }
+            async move { value(session, &format!("SELECT count(*) FROM hyrax_imp.{table}")).await.unwrap() }
         };
         let columns: Vec<String> = ["id", "name", "price", "born", "meta", "tags"].iter().map(|s| s.to_string()).collect();
 
@@ -204,20 +204,20 @@ mod tests {
             &[Some("2"), Some("O'Brien \\ \"q\""), None, None, None, None],
             &[Some("3"), Some(""), Some("0"), None, Some("[]"), Some("{}")],
         ]);
-        let dry = import_rows(&session, "pgdesk_imp", "t", &columns, &rows, true).await.unwrap();
+        let dry = import_rows(&session, "hyrax_imp", "t", &columns, &rows, true).await.unwrap();
         assert_eq!((dry.inserted, dry.rolled_back), (3, true));
         assert_eq!(count("t").await, "0");
 
         // La importación real confirma y conserva comillas, barras, NULL y tipos.
-        let real = import_rows(&session, "pgdesk_imp", "t", &columns, &rows, false).await.unwrap();
+        let real = import_rows(&session, "hyrax_imp", "t", &columns, &rows, false).await.unwrap();
         assert_eq!((real.inserted, real.rolled_back), (3, false));
         assert_eq!(count("t").await, "3");
-        assert_eq!(value(&session, "SELECT name FROM pgdesk_imp.t WHERE id = 2").await.as_deref(), Some("O'Brien \\ \"q\""));
-        assert_eq!(value(&session, "SELECT price::text FROM pgdesk_imp.t WHERE id = 1").await.as_deref(), Some("10.50"));
-        assert_eq!(value(&session, "SELECT meta->'a'->>1 FROM pgdesk_imp.t WHERE id = 1").await.as_deref(), Some("2"));
-        assert_eq!(value(&session, "SELECT tags[2] FROM pgdesk_imp.t WHERE id = 1").await.as_deref(), Some("y z"));
-        assert_eq!(value(&session, "SELECT price IS NULL FROM pgdesk_imp.t WHERE id = 2").await.as_deref(), Some("t"));
-        assert_eq!(value(&session, "SELECT name = '' FROM pgdesk_imp.t WHERE id = 3").await.as_deref(), Some("t"));
+        assert_eq!(value(&session, "SELECT name FROM hyrax_imp.t WHERE id = 2").await.as_deref(), Some("O'Brien \\ \"q\""));
+        assert_eq!(value(&session, "SELECT price::text FROM hyrax_imp.t WHERE id = 1").await.as_deref(), Some("10.50"));
+        assert_eq!(value(&session, "SELECT meta->'a'->>1 FROM hyrax_imp.t WHERE id = 1").await.as_deref(), Some("2"));
+        assert_eq!(value(&session, "SELECT tags[2] FROM hyrax_imp.t WHERE id = 1").await.as_deref(), Some("y z"));
+        assert_eq!(value(&session, "SELECT price IS NULL FROM hyrax_imp.t WHERE id = 2").await.as_deref(), Some("t"));
+        assert_eq!(value(&session, "SELECT name = '' FROM hyrax_imp.t WHERE id = 3").await.as_deref(), Some("t"));
 
         // Un valor inválido en la fila 3 no deja nada importado y el error dice qué fila fue.
         let bad = cells(&[
@@ -225,7 +225,7 @@ mod tests {
             &[Some("11"), Some("b"), Some("2"), None, None, None],
             &[Some("12"), Some("c"), Some("no es un número"), None, None, None],
         ]);
-        let failed = import_rows(&session, "pgdesk_imp", "t", &columns, &bad, false).await.unwrap_err();
+        let failed = import_rows(&session, "hyrax_imp", "t", &columns, &bad, false).await.unwrap_err();
         assert!(failed.contains("Fila 3") && failed.contains("No se importó nada"), "{failed}");
         assert_eq!(count("t").await, "3");
 
@@ -234,42 +234,42 @@ mod tests {
             &[Some("20"), None, None, None, None, None],
             &[Some("1"), None, None, None, None, None],
         ]);
-        let failed = import_rows(&session, "pgdesk_imp", "t", &columns, &dup, false).await.unwrap_err();
+        let failed = import_rows(&session, "hyrax_imp", "t", &columns, &dup, false).await.unwrap_err();
         let lower = failed.to_lowercase();
         assert!(failed.contains("Fila 2") && (lower.contains("duplicate") || lower.contains("duplicad")), "{failed}");
         assert_eq!(count("t").await, "3");
 
         // Un subconjunto de columnas deja el resto con su valor por defecto; una tabla sin PK también sirve.
         let subset = vec!["id".to_string(), "name".to_string()];
-        import_rows(&session, "pgdesk_imp", "t", &subset, &cells(&[&[Some("30"), Some("solo nombre")]]), false).await.unwrap();
+        import_rows(&session, "hyrax_imp", "t", &subset, &cells(&[&[Some("30"), Some("solo nombre")]]), false).await.unwrap();
         let loose = vec!["a".to_string(), "b".to_string()];
-        import_rows(&session, "pgdesk_imp", "no_pk", &loose, &cells(&[&[Some("1"), Some("x")], &[Some("1"), Some("x")]]), false).await.unwrap();
+        import_rows(&session, "hyrax_imp", "no_pk", &loose, &cells(&[&[Some("1"), Some("x")], &[Some("1"), Some("x")]]), false).await.unwrap();
         assert_eq!(count("no_pk").await, "2");
 
         // Un lote grande avanza en tandas encadenadas y respeta el orden de los errores.
         let many: Vec<Vec<Option<String>>> = (1000..6000).map(|i| vec![Some(i.to_string()), Some(format!("n{i}"))]).collect();
-        let big = import_rows(&session, "pgdesk_imp", "t", &subset, &many, false).await.unwrap();
+        let big = import_rows(&session, "hyrax_imp", "t", &subset, &many, false).await.unwrap();
         assert_eq!(big.inserted, 5000);
         assert_eq!(count("t").await, "5004");
         let mut late_failure = many.clone();
         late_failure.iter_mut().for_each(|r| r[0] = Some((10_000 + r[0].as_ref().unwrap().parse::<i32>().unwrap()).to_string()));
         late_failure[777][0] = Some("not a number".to_string());
-        let failed = import_rows(&session, "pgdesk_imp", "t", &subset, &late_failure, false).await.unwrap_err();
+        let failed = import_rows(&session, "hyrax_imp", "t", &subset, &late_failure, false).await.unwrap_err();
         assert!(failed.contains("Fila 778"), "{failed}");
         assert_eq!(count("t").await, "5004");
 
         // Rechazos: vistas, columnas inexistentes o repetidas, sesión de solo lectura.
-        let view = import_rows(&session, "pgdesk_imp", "v", &subset, &cells(&[&[Some("1"), Some("x")]]), false).await.unwrap_err();
+        let view = import_rows(&session, "hyrax_imp", "v", &subset, &cells(&[&[Some("1"), Some("x")]]), false).await.unwrap_err();
         assert!(view.contains("vistas"), "{view}");
         let unknown = vec!["id".to_string(), "nope".to_string()];
-        assert!(import_rows(&session, "pgdesk_imp", "t", &unknown, &cells(&[&[Some("1"), Some("x")]]), false).await.unwrap_err().contains("nope"));
+        assert!(import_rows(&session, "hyrax_imp", "t", &unknown, &cells(&[&[Some("1"), Some("x")]]), false).await.unwrap_err().contains("nope"));
         let sys = import_rows(&session, "pg_catalog", "pg_class", &subset, &cells(&[&[Some("1"), Some("x")]]), false).await.unwrap_err();
         assert!(sys.contains("sistema"), "{sys}");
         let read_only = db::connect(&profile(true)).await.unwrap();
-        let refused = import_rows(&read_only, "pgdesk_imp", "t", &subset, &cells(&[&[Some("1"), Some("x")]]), true).await.unwrap_err();
+        let refused = import_rows(&read_only, "hyrax_imp", "t", &subset, &cells(&[&[Some("1"), Some("x")]]), true).await.unwrap_err();
         assert!(refused.contains("solo lectura"), "{refused}");
 
-        run(&session, "DROP SCHEMA pgdesk_imp CASCADE").await;
+        run(&session, "DROP SCHEMA hyrax_imp CASCADE").await;
     }
 
     #[test]

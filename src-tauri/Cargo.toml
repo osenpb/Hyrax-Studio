@@ -1,11 +1,11 @@
 [package]
-name = "pgdesk"
+name = "hyrax"
 version = "0.1.0"
 description = "Cliente de escritorio para PostgreSQL"
 edition = "2021"
 
 [lib]
-name = "pgdesk_lib"
+name = "hyrax_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

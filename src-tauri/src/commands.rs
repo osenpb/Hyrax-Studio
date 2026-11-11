@@ -15,7 +15,23 @@ use crate::{db, dropping, export, import, profiles, schema, secrets};
 pub struct Sessions(Mutex<HashMap<String, Arc<Session>>>);
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_config_dir().map_err(|e| e.to_string())
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    migrate_legacy_profiles(&dir);
+    Ok(dir)
+}
+
+/// Antes la app se llamaba PgDesk (`dev.osen.pgdesk`): copia sus perfiles una sola vez.
+fn migrate_legacy_profiles(dir: &std::path::Path) {
+    let target = dir.join("profiles.json");
+    if target.exists() {
+        return;
+    }
+    let Some(parent) = dir.parent() else { return };
+    let legacy = parent.join("dev.osen.pgdesk").join("profiles.json");
+    if legacy.is_file() {
+        let _ = std::fs::create_dir_all(dir);
+        let _ = std::fs::copy(&legacy, &target);
+    }
 }
 
 async fn session(state: &State<'_, Sessions>, id: &str) -> Result<Arc<Session>, String> {
