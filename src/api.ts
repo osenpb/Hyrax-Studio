@@ -2,6 +2,32 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type SslMode = "disable" | "require" | "verify";
 
+export interface SshSettings {
+  enabled: boolean;
+  host: string;
+  port: number;
+  user: string;
+  keyPath: string | null;
+  fingerprint: string | null;
+  /** Frase de la clave o contraseña SSH: solo viaja al guardar o probar; se guarda en el almacén del sistema. */
+  secret: string;
+  hasSecret: boolean;
+  /** Pide olvidar el secreto guardado (vacío sin esto = conservar). */
+  clearSecret: boolean;
+}
+
+export const noSsh = (): SshSettings => ({
+  enabled: false,
+  host: "",
+  port: 22,
+  user: "",
+  keyPath: null,
+  fingerprint: null,
+  secret: "",
+  hasSecret: false,
+  clearSecret: false,
+});
+
 export interface ConnectionProfile {
   id: string;
   name: string;
@@ -15,6 +41,7 @@ export interface ConnectionProfile {
   production: boolean;
   caCertPath: string | null;
   hasPassword: boolean;
+  ssh: SshSettings;
 }
 
 export interface SessionInfo {

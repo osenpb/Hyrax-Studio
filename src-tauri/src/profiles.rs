@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::models::{ConnectionProfile, SslMode};
+use crate::models::{ConnectionProfile, SshSettings, SslMode};
 
 fn default_read_only() -> bool {
     true
@@ -28,6 +28,8 @@ struct Stored {
     production: bool,
     #[serde(default)]
     ca_cert_path: Option<String>,
+    #[serde(default)]
+    ssh: SshSettings,
 }
 
 impl From<&ConnectionProfile> for Stored {
@@ -44,6 +46,7 @@ impl From<&ConnectionProfile> for Stored {
             read_only: p.read_only,
             production: p.production,
             ca_cert_path: p.ca_cert_path.clone(),
+            ssh: SshSettings { secret: String::new(), has_secret: false, clear_secret: false, ..p.ssh.clone() },
         }
     }
 }
@@ -63,6 +66,7 @@ impl From<Stored> for ConnectionProfile {
             production: s.production,
             ca_cert_path: s.ca_cert_path,
             has_password: false,
+            ssh: s.ssh,
         }
     }
 }
@@ -132,6 +136,7 @@ mod tests {
             production: false,
             ca_cert_path: None,
             has_password: true,
+            ssh: Default::default(),
         }
     }
 

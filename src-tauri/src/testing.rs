@@ -21,6 +21,7 @@ pub fn profile(read_only: bool) -> ConnectionProfile {
         production: false,
         ca_cert_path: None,
         has_password: false,
+        ssh: Default::default(),
     }
 }
 

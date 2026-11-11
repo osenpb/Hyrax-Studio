@@ -34,6 +34,21 @@ fn migrate_legacy_profiles(dir: &std::path::Path) {
     }
 }
 
+fn ssh_secret_key(id: &str) -> String {
+    format!("ssh:{id}")
+}
+
+/// Completa con lo guardado en el almacén del sistema lo que la interfaz dejó vacío.
+fn load_secrets(profile: &mut ConnectionProfile) -> Result<(), String> {
+    if profile.password.is_empty() {
+        profile.password = secrets::get(&profile.id)?.unwrap_or_default();
+    }
+    if profile.ssh.enabled && profile.ssh.secret.is_empty() && !profile.ssh.clear_secret {
+        profile.ssh.secret = secrets::get(&ssh_secret_key(&profile.id))?.unwrap_or_default();
+    }
+    Ok(())
+}
+
 async fn session(state: &State<'_, Sessions>, id: &str) -> Result<Arc<Session>, String> {
     let found = {
         let mut sessions = state.0.lock().await;
@@ -72,6 +87,9 @@ pub fn list_profiles(app: AppHandle) -> Result<Vec<ConnectionProfile>, String> {
         }
         profile.has_password = secrets::get(&profile.id).ok().flatten().is_some();
         profile.password.clear();
+        profile.ssh.has_secret = profile.ssh.enabled
+            && secrets::get(&ssh_secret_key(&profile.id)).ok().flatten().is_some();
+        profile.ssh.secret.clear();
     }
     if migrated {
         profiles::store(&dir, &list)?;
@@ -87,6 +105,16 @@ pub fn save_profile(app: AppHandle, profile: ConnectionProfile) -> Result<(), St
     }
     profile.password.clear();
     profile.has_password = false;
+    // El secreto SSH solo se guarda si el túnel está activo; si se desactiva o se pide olvidarlo, se borra.
+    if !profile.ssh.enabled || profile.ssh.clear_secret {
+        secrets::delete(&ssh_secret_key(&profile.id))?;
+    }
+    if profile.ssh.enabled && !profile.ssh.secret.is_empty() {
+        secrets::set(&ssh_secret_key(&profile.id), &profile.ssh.secret)?;
+    }
+    profile.ssh.secret.clear();
+    profile.ssh.has_secret = false;
+    profile.ssh.clear_secret = false;
     profiles::save(&config_dir(&app)?, profile)
 }
 
@@ -98,15 +126,14 @@ pub async fn delete_profile(
 ) -> Result<(), String> {
     drop_profile_sessions(&state, &id).await;
     secrets::delete(&id)?;
+    secrets::delete(&ssh_secret_key(&id))?;
     profiles::delete(&config_dir(&app)?, &id)
 }
 
 #[tauri::command]
 pub async fn test_connection(profile: ConnectionProfile) -> Result<String, String> {
     let mut profile = profile;
-    if profile.password.is_empty() {
-        profile.password = secrets::get(&profile.id)?.unwrap_or_default();
-    }
+    load_secrets(&mut profile)?;
     let session = db::connect(&profile).await?;
     db::server_version(&session.client).await
 }
@@ -119,9 +146,7 @@ pub async fn connect_profile(
     database: String,
 ) -> Result<ConnectInfo, String> {
     let mut profile = profiles::find(&config_dir(&app)?, &id)?;
-    if profile.password.is_empty() {
-        profile.password = secrets::get(&id)?.unwrap_or_default();
-    }
+    load_secrets(&mut profile)?;
     profile.database = database.clone();
     let session = db::connect(&profile).await?;
     let version = db::server_version(&session.client).await?;
@@ -424,9 +449,7 @@ pub async fn drop_database(
     }
 
     let mut profile = profiles::find(&config_dir(&app)?, &id)?;
-    if profile.password.is_empty() {
-        profile.password = secrets::get(&id)?.unwrap_or_default();
-    }
+    load_secrets(&mut profile)?;
     // Se cierra nuestra propia sesión a esa base: si no, ella misma impediría eliminarla.
     let own = state.0.lock().await.remove(&format!("{id}::{database}"));
     drop(own);

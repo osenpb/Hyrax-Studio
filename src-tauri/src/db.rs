@@ -28,6 +28,8 @@ pub struct Session {
     pub read_only: AtomicBool,
     pub write_since: Mutex<Option<Instant>>,
     pub write_window: Duration,
+    /// Túnel SSH de esta sesión (si lo hay); se cierra al soltar la sesión.
+    pub tunnel: Option<crate::tunnel::Tunnel>,
 }
 
 pub fn describe(e: &tokio_postgres::Error) -> String {
@@ -182,8 +184,17 @@ pub fn effective_timeout(session: &Session, requested_ms: u64) -> u64 {
 
 pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
     let mut cfg = Config::new();
-    cfg.host(&profile.host)
-        .port(profile.port)
+    let tunnel = if profile.ssh.enabled {
+        Some(crate::tunnel::open(&profile.ssh, &profile.host, profile.port).await?)
+    } else {
+        None
+    };
+    // Con túnel se conecta al puerto local, pero `host` sigue siendo el real para verificar el certificado.
+    cfg.host(&profile.host);
+    if tunnel.is_some() {
+        cfg.hostaddr(std::net::Ipv4Addr::LOCALHOST.into());
+    }
+    cfg.port(tunnel.as_ref().map_or(profile.port, |t| t.local_port))
         .dbname(&profile.database)
         .user(&profile.user)
         .password(&profile.password)
@@ -201,9 +212,10 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
         read_only: AtomicBool::new(profile.read_only),
         write_since: Mutex::new(None),
         write_window: Duration::from_secs(WRITE_WINDOW_SECS),
+        tunnel: None,
     };
 
-    let session = match profile.ssl_mode {
+    let mut session = match profile.ssl_mode {
         SslMode::Disable => {
             cfg.ssl_mode(PgSslMode::Disable);
             let (client, connection) = cfg.connect(NoTls).await.map_err(err)?;
@@ -224,6 +236,7 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
         }
     };
 
+    session.tunnel = tunnel;
     if profile.read_only {
         set_read_only(&session.client, true).await?;
     }
@@ -606,6 +619,7 @@ mod tests {
             production: false,
             ca_cert_path: None,
             has_password: false,
+            ssh: Default::default(),
         })
     }
 
@@ -811,6 +825,7 @@ mod tests {
             production: false,
             ca_cert_path: ca,
             has_password: false,
+            ssh: Default::default(),
         }
     }
 

@@ -9,6 +9,52 @@ pub enum SslMode {
     Verify,
 }
 
+/// Túnel SSH opcional. `secret` (frase de la clave o contraseña SSH) solo viaja de la interfaz al
+/// backend; se guarda en el almacén del sistema y nunca en `profiles.json`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default)]
+    pub key_path: Option<String>,
+    #[serde(default)]
+    pub fingerprint: Option<String>,
+    #[serde(default)]
+    pub secret: String,
+    #[serde(default)]
+    pub has_secret: bool,
+    /// La interfaz lo activa para pedir que se olvide el secreto guardado (sin él, vacío = conservar).
+    #[serde(default)]
+    pub clear_secret: bool,
+}
+
+fn default_ssh_port() -> u16 {
+    22
+}
+
+impl Default for SshSettings {
+    fn default() -> Self {
+        SshSettings {
+            enabled: false,
+            host: String::new(),
+            port: default_ssh_port(),
+            user: String::new(),
+            key_path: None,
+            fingerprint: None,
+            secret: String::new(),
+            has_secret: false,
+            clear_secret: false,
+        }
+    }
+}
+
 fn default_read_only() -> bool {
     true
 }
@@ -34,6 +80,8 @@ pub struct ConnectionProfile {
     pub ca_cert_path: Option<String>,
     #[serde(default)]
     pub has_password: bool,
+    #[serde(default)]
+    pub ssh: SshSettings,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

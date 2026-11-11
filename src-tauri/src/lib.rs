@@ -10,6 +10,7 @@ mod profiles;
 mod schema;
 mod secrets;
 mod sqlscan;
+mod tunnel;
 #[cfg(test)]
 mod testing;
 

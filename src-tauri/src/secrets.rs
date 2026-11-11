@@ -19,7 +19,8 @@ const LEGACY_SERVICE: &str = "pgdesk";
 pub fn get(profile_id: &str) -> Result<Option<String>, String> {
     match entry(profile_id)?.get_password() {
         Ok(password) => Ok(Some(password)),
-        Err(Error::NoEntry) => migrate_legacy(profile_id),
+        Err(Error::NoEntry) if !profile_id.starts_with("ssh:") => migrate_legacy(profile_id),
+        Err(Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("No se pudo leer la contraseña del almacén del sistema: {e}")),
     }
 }

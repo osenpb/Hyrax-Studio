@@ -573,6 +573,7 @@ mod write_tests {
             production: false,
             ca_cert_path: None,
             has_password: false,
+            ssh: Default::default(),
         }
     }
 
