@@ -24,6 +24,7 @@ pub fn run() {
             commands::list_profiles,
             commands::save_profile,
             commands::delete_profile,
+            commands::reset_app_data,
             commands::test_connection,
             commands::connect_profile,
             commands::disconnect,

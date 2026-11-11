@@ -20,18 +20,32 @@ fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Antes la app se llamaba PgDesk (`dev.osen.pgdesk`): copia sus perfiles una sola vez.
+/// Antes la app se llamaba PgDesk (`dev.osen.pgdesk`): copia sus perfiles **una sola vez**.
+/// La marca `.legacy-checked` evita que, tras borrar las conexiones, reaparezcan desde la carpeta antigua.
 fn migrate_legacy_profiles(dir: &std::path::Path) {
-    let target = dir.join("profiles.json");
-    if target.exists() {
+    let marker = dir.join(LEGACY_MARKER);
+    if marker.exists() {
         return;
     }
-    let Some(parent) = dir.parent() else { return };
-    let legacy = parent.join("dev.osen.pgdesk").join("profiles.json");
-    if legacy.is_file() {
-        let _ = std::fs::create_dir_all(dir);
-        let _ = std::fs::copy(&legacy, &target);
+    let target = dir.join("profiles.json");
+    if !target.exists() {
+        if let Some(legacy) = legacy_profiles_file(dir).filter(|p| p.is_file()) {
+            let _ = std::fs::create_dir_all(dir);
+            let _ = std::fs::copy(&legacy, &target);
+        }
     }
+    mark_legacy_checked(dir);
+}
+
+const LEGACY_MARKER: &str = ".legacy-checked";
+
+fn legacy_profiles_file(dir: &std::path::Path) -> Option<PathBuf> {
+    Some(dir.parent()?.join("dev.osen.pgdesk").join("profiles.json"))
+}
+
+fn mark_legacy_checked(dir: &std::path::Path) {
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(dir.join(LEGACY_MARKER), b"");
 }
 
 fn ssh_secret_key(id: &str) -> String {
@@ -128,6 +142,71 @@ pub async fn delete_profile(
     secrets::delete(&id)?;
     secrets::delete(&ssh_secret_key(&id))?;
     profiles::delete(&config_dir(&app)?, &id)
+}
+
+/// Palabra que el usuario debe escribir para borrar todo lo guardado.
+const RESET_CONFIRM: &str = "BORRAR";
+
+/// Borra todas las conexiones guardadas y sus contraseñas (y claves SSH) del almacén del sistema.
+/// Cierra las sesiones abiertas. Devuelve cuántas conexiones había.
+#[tauri::command]
+pub async fn reset_app_data(
+    app: AppHandle,
+    state: State<'_, Sessions>,
+    confirm: String,
+) -> Result<usize, String> {
+    if confirm != RESET_CONFIRM {
+        return Err(format!("Para borrar todo hay que escribir {RESET_CONFIRM}."));
+    }
+    let dir = config_dir(&app)?;
+    state.0.lock().await.clear();
+    reset_in(&dir)
+}
+
+/// Lógica del borrado total sobre una carpeta de configuración (separada para poder probarla sin la app).
+fn reset_in(dir: &std::path::Path) -> Result<usize, String> {
+    // Si el archivo está dañado no se pueden conocer los ids: se borra igual.
+    let mut list = profiles::load(dir).unwrap_or_default();
+    // También los de la copia antigua de PgDesk, si sigue en disco, para no dejar sus contraseñas huérfanas.
+    if let Some(legacy_dir) = legacy_profiles_file(dir).and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+        for p in profiles::load(&legacy_dir).unwrap_or_default() {
+            if !list.iter().any(|x| x.id == p.id) {
+                list.push(p);
+            }
+        }
+    }
+
+    let mut failures = Vec::new();
+    for profile in &list {
+        for result in [
+            secrets::delete(&profile.id),
+            secrets::delete(&ssh_secret_key(&profile.id)),
+            secrets::delete_legacy(&profile.id),
+        ] {
+            if let Err(e) = result {
+                failures.push(e);
+            }
+        }
+    }
+    // Los archivos se borran al final: si algo falló arriba, se puede reintentar sin perder la lista.
+    if !failures.is_empty() {
+        failures.dedup();
+        return Err(format!(
+            "No se borró todo; se conservaron las conexiones para poder reintentar. {}",
+            failures.join(" ")
+        ));
+    }
+    profiles::clear(dir)?;
+    // La copia antigua de PgDesk también se va: si no, volvería a copiarse o seguiría en disco.
+    if let Some(legacy) = legacy_profiles_file(dir) {
+        match std::fs::remove_file(&legacy) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("No se pudo borrar la copia antigua de PgDesk ({}): {e}", legacy.display())),
+        }
+    }
+    mark_legacy_checked(dir);
+    Ok(list.len())
 }
 
 #[tauri::command]
@@ -523,11 +602,79 @@ mod tests {
     }
 
     #[test]
-    fn without_a_legacy_folder_nothing_is_created() {
+    fn without_a_legacy_folder_no_profiles_are_created() {
         let root = temp("b");
         let current = root.join("dev.osen.hyrax");
         migrate_legacy_profiles(&current);
-        assert!(!current.exists());
+        assert!(!current.join("profiles.json").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn deleted_profiles_do_not_come_back_from_the_legacy_folder() {
+        let root = temp("c");
+        let legacy = root.join("dev.osen.pgdesk");
+        let current = root.join("dev.osen.hyrax");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("profiles.json"), "[\"viejo\"]").unwrap();
+
+        migrate_legacy_profiles(&current);
+        assert!(current.join("profiles.json").exists());
+
+        // El usuario borra todo: se quita el archivo nuevo, pero la marca impide copiar de nuevo.
+        std::fs::remove_file(current.join("profiles.json")).unwrap();
+        migrate_legacy_profiles(&current);
+        assert!(!current.join("profiles.json").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reset_removes_files_and_every_stored_secret_and_nothing_comes_back() {
+        let root = temp("reset");
+        let legacy = root.join("dev.osen.pgdesk");
+        let current = root.join("dev.osen.hyrax");
+        std::fs::create_dir_all(&legacy).unwrap();
+        let pid = std::process::id();
+        let (a, b) = (format!("reset-a-{pid}"), format!("reset-b-{pid}"));
+
+        // a: perfil actual con contraseña y secreto SSH; b: solo en la copia antigua, con contraseña antigua.
+        let mk = |id: &str| profiles::store(
+            &current,
+            &[serde_json::from_str::<ConnectionProfile>(&format!(
+                r#"{{"id":"{id}","name":"n","host":"h","port":1,"database":"d","user":"u"}}"#
+            ))
+            .unwrap()],
+        );
+        mk(&a).unwrap();
+        profiles::store(
+            &legacy,
+            &[serde_json::from_str::<ConnectionProfile>(&format!(
+                r#"{{"id":"{b}","name":"n","host":"h","port":1,"database":"d","user":"u"}}"#
+            ))
+            .unwrap()],
+        )
+        .unwrap();
+        secrets::set(&a, "pw-a").unwrap();
+        secrets::set(&ssh_secret_key(&a), "ssh-a").unwrap();
+        keyring::Entry::new("pgdesk", &b).unwrap().set_password("pw-b-antigua").unwrap();
+        mark_legacy_checked(&current);
+
+        assert_eq!(reset_in(&current).unwrap(), 2);
+
+        assert_eq!(secrets::get(&a).unwrap(), None);
+        assert_eq!(secrets::get(&ssh_secret_key(&a)).unwrap(), None);
+        assert!(matches!(
+            keyring::Entry::new("pgdesk", &b).unwrap().get_password(),
+            Err(keyring::Error::NoEntry)
+        ));
+        assert!(profiles::load(&current).unwrap().is_empty());
+        assert!(!legacy.join("profiles.json").exists());
+
+        // Y no resucita al volver a abrir la app.
+        migrate_legacy_profiles(&current);
+        assert!(profiles::load(&current).unwrap().is_empty());
+        // Repetirlo no falla.
+        assert_eq!(reset_in(&current).unwrap(), 0);
         let _ = std::fs::remove_dir_all(root);
     }
 }

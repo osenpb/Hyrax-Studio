@@ -111,6 +111,19 @@ pub fn delete(dir: &Path, id: &str) -> Result<(), String> {
     store(dir, &profiles)
 }
 
+/// Borra el archivo de conexiones (y su temporal). No falla si no existe.
+pub fn clear(dir: &Path) -> Result<(), String> {
+    let path = file(dir);
+    for p in [path.with_extension("json.tmp"), path] {
+        match fs::remove_file(&p) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("No se pudo borrar {}: {e}", p.display())),
+        }
+    }
+    Ok(())
+}
+
 pub fn find(dir: &Path, id: &str) -> Result<ConnectionProfile, String> {
     load(dir)?
         .into_iter()
@@ -198,5 +211,19 @@ mod tests {
         assert!(!text.contains("LEGACYPW"), "{text}");
         assert_eq!(load(&dir).unwrap()[0].password, "");
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn clear_removes_the_file_and_is_idempotent() {
+        let dir = std::env::temp_dir().join(format!("hyrax-clear-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        clear(&dir).unwrap(); // sin carpeta: no es un error
+        store(&dir, &[sample("a", "A"), sample("b", "B")]).unwrap();
+        assert_eq!(load(&dir).unwrap().len(), 2);
+        clear(&dir).unwrap();
+        assert!(load(&dir).unwrap().is_empty());
+        assert!(!dir.join("profiles.json").exists());
+        clear(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

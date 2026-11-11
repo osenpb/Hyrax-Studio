@@ -54,3 +54,18 @@ export function clearHistory(profileId: string): void {
     return;
   }
 }
+
+/** Borra el historial de consultas de todas las conexiones (no toca la preferencia de activarlo). */
+export function clearAllHistory(): void {
+  try {
+    const prefix = "hyrax-history:";
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    return;
+  }
+}

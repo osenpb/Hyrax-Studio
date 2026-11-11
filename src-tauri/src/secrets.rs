@@ -37,6 +37,17 @@ fn migrate_legacy(profile_id: &str) -> Result<Option<String>, String> {
     Ok(Some(password))
 }
 
+/// Borra también la entrada que dejó la versión anterior (servicio `pgdesk`), si existe.
+pub fn delete_legacy(profile_id: &str) -> Result<(), String> {
+    let Ok(entry) = Entry::new(LEGACY_SERVICE, profile_id) else {
+        return Ok(());
+    };
+    match entry.delete_credential() {
+        Ok(()) | Err(Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("No se pudo borrar una contraseña antigua del almacén del sistema: {e}")),
+    }
+}
+
 pub fn delete(profile_id: &str) -> Result<(), String> {
     match entry(profile_id)?.delete_credential() {
         Ok(()) | Err(Error::NoEntry) => Ok(()),
@@ -76,6 +87,21 @@ mod tests {
         // Quedó en el servicio nuevo y se borró del viejo.
         assert!(matches!(old.get_password(), Err(Error::NoEntry)));
         assert_eq!(Entry::new(SERVICE, &id).unwrap().get_password().unwrap(), "clave vieja");
+
+        delete(&id).unwrap();
+    }
+
+    #[test]
+    fn delete_legacy_removes_only_the_old_service_entry() {
+        let id = format!("hyrax-legacy-del-{}", std::process::id());
+        let _ = delete(&id);
+        Entry::new(LEGACY_SERVICE, &id).unwrap().set_password("vieja").unwrap();
+        set(&id, "nueva").unwrap();
+
+        delete_legacy(&id).unwrap();
+        assert!(matches!(Entry::new(LEGACY_SERVICE, &id).unwrap().get_password(), Err(Error::NoEntry)));
+        assert_eq!(get(&id).unwrap().as_deref(), Some("nueva"));
+        delete_legacy(&id).unwrap(); // sin entrada: no es un error
 
         delete(&id).unwrap();
     }

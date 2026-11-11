@@ -269,6 +269,7 @@ export const api = {
   listProfiles: () => invoke<ConnectionProfile[]>("list_profiles"),
   saveProfile: (profile: ConnectionProfile) => invoke<void>("save_profile", { profile }),
   deleteProfile: (id: string) => invoke<void>("delete_profile", { id }),
+  resetAppData: (confirm: string) => invoke<number>("reset_app_data", { confirm }),
   testConnection: (profile: ConnectionProfile) => invoke<string>("test_connection", { profile }),
   connect: (id: string, database: string) =>
     invoke<SessionInfo>("connect_profile", { id, database }),

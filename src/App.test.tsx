@@ -15,6 +15,7 @@ let planJson = false;
 let openedFile: { path: string; name: string; content: string } | null = null;
 let importError: string | null = null;
 let dropError: string | null = null;
+let profilesCleared = false;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -93,6 +94,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     calls.push({ cmd, args });
     switch (cmd) {
       case "list_profiles":
+        if (profilesCleared) return [];
         return [{ ...profile, production: productionProfile, hasPassword: true, caCertPath: null }];
       case "connect_profile":
         return { version: "PostgreSQL 16", readOnly: readOnlyState };
@@ -200,6 +202,10 @@ vi.mock("@tauri-apps/api/core", () => ({
         return openedFile;
       case "save_text_file":
         return { path: "C:/scripts/consulta.sql", name: "consulta.sql", content: "" };
+      case "reset_app_data":
+        if (args.confirm !== "BORRAR") throw "confirmación incorrecta";
+        profilesCleared = true;
+        return 1;
       case "drop_object":
         if (dropError) throw dropError;
         return `DROP TABLE "${String(args.schema)}"."${String(args.name)}"`;
@@ -227,6 +233,7 @@ Range.prototype.getClientRects = () => emptyRects as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
 
 beforeEach(() => {
+  profilesCleared = false;
   calls.length = 0;
   failDatabases = false;
   readOnlyState = true;
@@ -1568,5 +1575,59 @@ describe("menú contextual y eliminar", () => {
     await user.click(dropButton());
 
     await waitFor(() => expect(screen.queryByText("Contar exacto")).toBeNull());
+  });
+});
+
+describe("borrar conexiones y contraseñas guardadas", () => {
+  const openReset = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByRole("textbox", { name: "Comandos" }), "borrar conexiones");
+    await user.keyboard("{Enter}");
+    return await screen.findByRole("dialog", { name: "Borrar datos guardados" });
+  };
+
+  it("exige escribir BORRAR y luego deja la lista de conexiones vacía", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("hyrax-history:p1", JSON.stringify([{ sql: "select 1", at: 1, ms: 1, ok: true }]));
+    render(<App />);
+    await screen.findByText("dev_erp");
+
+    const dialog = await openReset(user);
+    const confirm = within(dialog).getByRole("button", { name: "Borrar todo" }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    expect(calls.some((c) => c.cmd === "reset_app_data")).toBe(false);
+
+    await user.type(within(dialog).getByRole("textbox", { name: "Escribe BORRAR para confirmar" }), "borrar");
+    expect(confirm.disabled).toBe(true); // es sensible a mayúsculas
+
+    await user.clear(within(dialog).getByRole("textbox", { name: "Escribe BORRAR para confirmar" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "Escribe BORRAR para confirmar" }), "BORRAR");
+    expect(confirm.disabled).toBe(false);
+    await user.click(confirm);
+
+    await waitFor(() => expect(calls.find((c) => c.cmd === "reset_app_data")?.args).toEqual({ confirm: "BORRAR" }));
+    await waitFor(() => expect(screen.queryByText("dev_erp")).toBeNull());
+    expect(screen.queryByRole("dialog", { name: "Borrar datos guardados" })).toBeNull();
+    expect(localStorage.getItem("hyrax-history:p1")).toBeNull();
+  });
+
+  it("conserva el historial si se desmarca la opción, y cancelar no borra nada", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("hyrax-history:p1", JSON.stringify([{ sql: "select 1", at: 1, ms: 1, ok: true }]));
+    render(<App />);
+    await screen.findByText("dev_erp");
+
+    let dialog = await openReset(user);
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(calls.some((c) => c.cmd === "reset_app_data")).toBe(false);
+    expect(screen.getByText("dev_erp")).toBeTruthy();
+
+    dialog = await openReset(user);
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.type(within(dialog).getByRole("textbox", { name: "Escribe BORRAR para confirmar" }), "BORRAR");
+    await user.click(within(dialog).getByRole("button", { name: "Borrar todo" }));
+    await waitFor(() => expect(screen.queryByText("dev_erp")).toBeNull());
+    expect(localStorage.getItem("hyrax-history:p1")).not.toBeNull();
+    localStorage.removeItem("hyrax-history:p1");
   });
 });

@@ -19,6 +19,7 @@ import SqlTab from "./components/SqlTab";
 import DdlView from "./components/DdlView";
 import Palette, { type PaletteItem } from "./components/Palette";
 import CompareDialog, { type Pin } from "./components/CompareDialog";
+import ResetDialog from "./components/ResetDialog";
 import Icon, { type IconName } from "./components/Icon";
 import { clearHistory } from "./history";
 import { rank } from "./fuzzy";
@@ -78,6 +79,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ profile: ConnectionProfile | null } | null>(null);
   const [toDelete, setToDelete] = useState<ConnectionProfile | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [theme, setTheme] = useState<Theme>(loadTheme);
@@ -264,6 +266,16 @@ export default function App() {
     await reloadProfiles();
   };
 
+  // Tras borrar todo lo guardado la app queda como recién instalada.
+  const afterReset = async () => {
+    setResetOpen(false);
+    setTabs([]);
+    setActiveTab(null);
+    setConnected({});
+    setPins([]);
+    await reloadProfiles();
+  };
+
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
     const move = (ev: MouseEvent) => setSidebarWidth(Math.min(600, Math.max(220, ev.clientX)));
@@ -394,6 +406,13 @@ export default function App() {
         label: "Nueva conexión…",
         icon: <Icon name="plus" size={14} />,
         run: () => setDialog({ profile: null }),
+      },
+      {
+        key: "reset",
+        label: "Borrar conexiones y contraseñas guardadas…",
+        detail: `${profiles.length} guardadas`,
+        icon: <Icon name="trash" size={14} />,
+        run: () => setResetOpen(true),
       },
     ];
     return list;
@@ -604,6 +623,9 @@ export default function App() {
         />
       )}
 
+      {resetOpen && (
+        <ResetDialog count={profiles.length} onDone={() => void afterReset()} onClose={() => setResetOpen(false)} />
+      )}
       {dialog && (
         <ConnectionDialog initial={dialog.profile} onSave={saveProfile} onClose={() => setDialog(null)} />
       )}
