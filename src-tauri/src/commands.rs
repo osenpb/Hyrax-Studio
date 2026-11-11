@@ -466,3 +466,45 @@ pub async fn run_sql_dry(
     let timeout_ms = db::effective_timeout(&session, timeout_ms);
     db::run_sql_dry(&session, &sql, limit.clamp(1, 10000) as usize, timeout_ms).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("hyrax-migrate-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn legacy_profiles_are_copied_once_and_never_overwrite_new_ones() {
+        let root = temp("a");
+        let legacy = root.join("dev.osen.pgdesk");
+        let current = root.join("dev.osen.hyrax");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("profiles.json"), "[\"viejo\"]").unwrap();
+
+        migrate_legacy_profiles(&current);
+        assert_eq!(std::fs::read_to_string(current.join("profiles.json")).unwrap(), "[\"viejo\"]");
+
+        // Si ya hay perfiles nuevos, no se tocan aunque el archivo viejo cambie.
+        std::fs::write(current.join("profiles.json"), "[\"nuevo\"]").unwrap();
+        std::fs::write(legacy.join("profiles.json"), "[\"otro\"]").unwrap();
+        migrate_legacy_profiles(&current);
+        assert_eq!(std::fs::read_to_string(current.join("profiles.json")).unwrap(), "[\"nuevo\"]");
+        // El original se conserva.
+        assert!(legacy.join("profiles.json").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn without_a_legacy_folder_nothing_is_created() {
+        let root = temp("b");
+        let current = root.join("dev.osen.hyrax");
+        migrate_legacy_profiles(&current);
+        assert!(!current.exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
