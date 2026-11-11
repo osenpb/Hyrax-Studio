@@ -1,143 +1,151 @@
-# Plan: soporte para MongoDB
+# Plan: MongoDB support
 
-Estado: **planificación** (2026-11-11). No hay código de MongoDB todavía. Este documento fija el alcance, las decisiones técnicas propuestas, las fases y los riesgos, para decidir antes de escribir código.
+Status: **planning** (2026-11-11). There is no MongoDB code yet. This document fixes the scope, the proposed technical decisions, the phases and the risks, so they can be agreed before writing code.
 
-Meta: que Hyrax Studio pueda conectarse a MongoDB y cubra lo esencial del día a día (explorar, consultar, revisar y corregir documentos) con las mismas reglas de seguridad que ya tiene para PostgreSQL: solo lectura por defecto, producción marcada con confirmación, credenciales en el almacén del sistema y SQL (aquí, la operación) visible antes de aplicar.
+Goal: Hyrax Studio can connect to MongoDB and cover the everyday essentials (browse, query, review and fix documents) with the same safety rules it already has for PostgreSQL: read-only by default, production marked with confirmation, credentials in the system store, and the operation shown before it is applied.
 
-## 1. Pantalla de inicio
+## Decisions taken (2026-11-11)
 
-Hoy, sin pestañas abiertas, se ve una bienvenida fija. Pasa a ser un **menú de inicio**:
-
-- Dos tarjetas para crear una conexión: **PostgreSQL** y **MongoDB** (cada una abre el formulario de su motor).
-- Lista de **conexiones recientes y guardadas**, con la insignia del motor (PG / Mongo) y la marca de producción.
-- Acciones rápidas: pegar una cadena de conexión (`postgresql://…`, `mongodb://…`, `mongodb+srv://…`: el motor se deduce del esquema), abrir un script, ver atajos.
-- El árbol de la izquierda sigue siendo la navegación principal; el inicio solo aparece cuando no hay pestañas.
-
-Cambios que implica: el perfil de conexión gana un campo `engine` (`postgres` por defecto para los perfiles existentes) y el formulario de conexión pasa a ser un formulario por motor.
-
-## 2. Qué es "lo esencial" en MongoDB
-
-| Prioridad | Función | Notas |
+| # | Question | Decision |
 |---|---|---|
-| Imprescindible | Conectar (host/puerto o `mongodb+srv`, usuario, base de autenticación, TLS con CA opcional) | Contraseña en el almacén del sistema, igual que PG |
-| Imprescindible | Árbol: servidor → bases → colecciones (y vistas) | Con conteo estimado y tamaño |
-| Imprescindible | Ver documentos de una colección: paginación, filtro, orden, proyección | Filtro en JSON; cuadrícula con las claves de primer nivel y visor de documento completo |
-| Imprescindible | Visor de documento: árbol JSON con tipos BSON visibles (ObjectId, Date, Decimal128, Binary…) | Se muestra JSON extendido, no se pierde el tipo |
-| Imprescindible | Consola de consultas: `find` y `aggregate` con resultados | JSON, no JavaScript (ver 4.3) |
-| Imprescindible | Solo lectura por defecto + producción marcada | Ver sección 5: aquí el "solo lectura" es más débil que en PG |
-| Importante | Índices (lista, tamaño, uso) y estadísticas de la colección | `listIndexes`, `$collStats` |
-| Importante | Esquema inferido por muestreo (`$sample`): claves, tipos y frecuencia | Sustituye al "DDL" de SQL |
-| Importante | `explain` con etapa ganadora, documentos examinados vs devueltos | Árbol parecido al plan de PG |
-| Importante | Exportar a JSON, NDJSON y CSV; copiar como `mongosh` | Streaming con tope, como PG |
-| Importante | Insertar, editar y eliminar documentos, con vista previa y confirmación | Escritura con la misma ventana que caduca |
-| Importante | Importar NDJSON/JSON/CSV | Con ensayo (conteo) antes de aplicar |
-| Importante | Eliminar colección o base con confirmación escrita | Reutiliza `DropDialog` |
-| Después | Crear/borrar índices, validadores de esquema, vistas | |
-| Después | Túnel SSH hacia Mongo, autenticación X.509 / AWS / Kerberos, change streams | |
-| No ahora | Editor de agregaciones visual, comparación de colecciones, GridFS | |
+| 1 | Console style | **JSON (Find / Aggregate) first**, no `db.col.find()` syntax yet — *as long as the UI is comfortable to use*. That makes comfort a requirement, not an extra: field autocomplete from sampling, ready-made templates, formatting and validation as you type, a quick filter bar on the collection view (so simple filters need no JSON at all), and "copy as mongosh". |
+| 2 | Writes | **Exploration first.** M1 and M2 are read-only; writing arrives in M3. |
+| 3 | Real MongoDB targets | **Local, Atlas and a company server.** So `mongodb+srv://`, TLS and a custom CA file are part of M1, not a later phase. The SSH tunnel stays optional (Atlas does not need it). |
+| 4 | Start screen | **Whatever performs best**: a plain, lightweight list of saved connections (engine badge, production mark), no heavy cards or images, rendered lazily. The engine choice lives in the "New connection" dialog. |
+| 5 | Vocabulary | **MongoDB's own terms** in the MongoDB views: collection, document, field, aggregation pipeline, index. |
 
-## 3. Qué se reutiliza y qué no
+## 1. Start screen
 
-**Se reutiliza tal cual:** almacén de credenciales, perfiles guardados, formulario de conexión (con secciones por motor), túnel SSH (con salvedades, ver riesgos), paleta de comandos, menú contextual, diálogo de borrado con nombre escrito, borrado de datos guardados, historial, exportación en streaming, temas y tipografías, `CompareDialog` para resultados fijados.
+Today, with no tabs open, a fixed welcome is shown. It becomes a **start menu**, kept deliberately simple and fast:
 
-**Hay que escribirlo de nuevo para Mongo:** el módulo de datos (driver, sesión, consultas), el visor de documentos, la consola (editor JSON en lugar de SQL), el plan de `explain`, el esquema por muestreo y la edición de documentos.
+- A list of **saved connections** with an engine badge (PG / Mongo), the production mark and the last time it was used, plus a **New connection** button that first asks for the engine.
+- Pasting a connection string (`postgresql://…`, `mongodb://…`, `mongodb+srv://…`) anywhere on the screen creates the connection and deduces the engine from the scheme.
+- Quick actions: open a script, shortcuts.
+- The tree on the left stays the main navigation; the start screen only shows when there are no tabs.
 
-**No aplica:** SQL, DDL, claves foráneas navegables, estructura de tablas, parámetros `:nombre`, `ROLLBACK`.
+What it implies: the connection profile gains an `engine` field (`postgres` by default for existing profiles) and the connection form becomes one form per engine.
 
-## 4. Decisiones técnicas propuestas
+## 2. What "essential" means for MongoDB
 
-### 4.1 Driver y tipos
-- Driver oficial `mongodb` (asíncrono, sobre Tokio, que ya usamos) y `bson`. Versiones vigentes al planificar: `mongodb 3.x`, `bson 3.x`.
-- Los valores viajan a la interfaz como **JSON extendido** (relajado para mostrar, canónico para editar), así no se pierden tipos como `Decimal128`, `Long` o `ObjectId`.
-- **Spike previo (M0):** comprobar que compila en Windows sin herramientas extra (algunas dependencias criptográficas exigen CMake/NASM), medir cuánto crece el binario y pasar `cargo audit`. Si el driver oficial no encaja, se evalúa otra ruta antes de seguir.
+| Priority | Feature | Notes |
+|---|---|---|
+| Must | Connect (host/port or `mongodb+srv`, user, auth database, TLS with an optional CA file) | Password in the system store, like PG |
+| Must | Tree: server → databases → collections (and views) | With estimated count and size |
+| Must | Browse a collection's documents: pagination, filter, sort, projection | Quick filter bar plus JSON filter; grid with top-level fields and a full document viewer |
+| Must | Document viewer: JSON tree with BSON types visible (ObjectId, Date, Decimal128, Binary…) | Extended JSON is shown, types are not lost |
+| Must | Query console: `find` and `aggregate` with results | JSON, not JavaScript (see 4.3) |
+| Must | Read-only by default + production marking | See section 5: here read-only is weaker than in PG |
+| Should | Indexes (list, size, usage) and collection statistics | `listIndexes`, `$collStats` |
+| Should | Schema inferred by sampling (`$sample`): fields, types and frequency | Replaces SQL's "DDL" |
+| Should | `explain` with winning stage, documents examined vs returned | Tree like PG's plan |
+| Should | Export to JSON, NDJSON and CSV; copy as `mongosh` | Streamed with a cap, like PG |
+| Should | Insert, edit and delete documents, with preview and confirmation | Write mode with the same expiring window |
+| Should | Import NDJSON/JSON/CSV | With a dry run (count) before applying |
+| Should | Drop a collection or database with typed confirmation | Reuses `DropDialog` |
+| Later | Create/drop indexes, schema validators, views | |
+| Later | SSH tunnel to Mongo, X.509 / AWS / Kerberos authentication, change streams | |
+| Not now | Visual aggregation builder, collection comparison, GridFS | |
 
-### 4.2 Arquitectura del código
-- Perfil: `engine: postgres | mongodb`, y para Mongo campos propios (hosts, `srv`, base de autenticación, conjunto de réplicas, TLS, lectura preferida). La URI se construye al conectar; **la contraseña nunca va en la URI guardada**.
-- Backend: carpeta `src-tauri/src/mongo/` con `session`, `browse`, `schema`, `edit`, `import_export`. Comandos con prefijo `mongo_` para no tocar los de PostgreSQL. No se fuerza una abstracción común antes de tiempo: se extrae solo lo que de verdad coincida (perfiles, sesiones, errores, límites) cuando haya dos implementaciones.
-- Sesiones: una conexión por perfil (el driver ya agrupa conexiones); la clave de sesión incluye el motor para no mezclarlas con las de PG.
-- Interfaz: `Tab` gana tipos `collection`, `mongo-query` y `indexes`; el árbol de la barra lateral se alimenta por motor. Se evita que los componentes de SQL conozcan Mongo y viceversa.
+## 3. What is reused and what is not
 
-### 4.3 Consola: JSON, no JavaScript
-- Fase 1: pestañas de **Find** (filtro, proyección, orden, límite) y **Aggregate** (pipeline como arreglo JSON), con editor CodeMirror en modo JSON y autocompletado de campos tomados del muestreo.
-- Una sintaxis tipo `db.coleccion.find({...}).sort({...})` se puede añadir después con un **analizador propio** de un subconjunto seguro. **No se ejecuta JavaScript** (ni `eval`, ni `$where`/`$function` por defecto): sería la forma más fácil de saltarse las protecciones.
+**Reused as is:** credential store, saved profiles, connection form (with per-engine sections), SSH tunnel (with caveats, see risks), command palette, context menu, drop dialog with typed name, erase saved data, history, streamed export, themes and fonts, `CompareDialog` for pinned results.
 
-### 4.4 Tiempos, cancelación y topes
-- `maxTimeMS` como el tiempo máximo por consulta (mismos valores que PG, con tope menor en producción).
-- Cancelar = cerrar el cursor y, si hace falta, `killOp`.
-- Se cargan lotes con tope de documentos y de tamaño (un documento puede pesar hasta 16 MB); el conteo exacto es opcional, como en PG.
+**Must be written anew for Mongo:** the data module (driver, session, queries), the document viewer, the console (JSON editor instead of SQL), the `explain` plan view, schema by sampling and document editing.
 
-## 5. Seguridad: lo que cambia respecto a PostgreSQL
+**Does not apply:** SQL, DDL, navigable foreign keys, table structure, `:name` parameters, `ROLLBACK`.
 
-En PostgreSQL el modo solo lectura se apoya en `default_transaction_read_only`, una opción del propio servidor. **MongoDB no tiene un equivalente por sesión.** Por eso:
+## 4. Proposed technical decisions
 
-1. **La barrera real es el rol del usuario:** documentar y exigir en la guía una cuenta con rol `read`. Ejemplo para `docs/SEGURIDAD.md`: `db.createUser({user:"hyrax_ro", pwd:passwordPrompt(), roles:[{role:"read", db:"mi_base"}]})`.
-2. **En la aplicación, el solo lectura es un guardarraíl:** la consola solo permite operaciones de lectura (`find`, `aggregate`, `count`, `distinct`, `explain`); las agregaciones se revisan y se **rechazan las etapas `$out` y `$merge`**, y `$function`/`$accumulator`/`$where` (JavaScript en el servidor). Todo comando que no esté en la lista se rechaza.
-3. **Escritura:** misma ventana que caduca (10 minutos), confirmación escrita del nombre de la base en producción, validada también en el backend.
-4. **No hay `ROLLBACK` gratuito:** las transacciones solo existen en conjuntos de réplicas y clústeres con particiones. El "ensayo" será una **vista previa**: cuántos documentos coinciden con el filtro y una muestra de ellos, antes de un `updateMany` o `deleteMany`. Si el servidor soporta transacciones, se puede ofrecer ensayo real como mejora.
-5. **Control de cambios concurrentes al editar:** el filtro del `replaceOne`/`updateOne` incluye `_id` y el valor original de los campos modificados (o de todo el documento), para no pisar un cambio ajeno.
-6. **Operaciones destructivas** (`drop`, `deleteMany` sin filtro, `updateMany` sin filtro): aviso reforzado y mostrar la operación exacta, como el SQL de PG.
-7. Mismas reglas de credenciales: contraseña en el almacén del sistema, nunca en `profiles.json`, nunca en la URI guardada ni en el historial.
+### 4.1 Driver and types
+- Official `mongodb` driver (async, on Tokio, which we already use) and `bson`. Versions current at planning time: `mongodb 3.x`, `bson 3.x`.
+- Values travel to the UI as **Extended JSON** (relaxed for display, canonical for editing), so types like `Decimal128`, `Long` or `ObjectId` are not lost.
 
-## 6. Fases
+**Driver spike (done 2026-11-11, dependency not kept yet):**
+- `mongodb 3` with `default-features = false` and `features = ["compat-3-3-0", "rustls-tls", "dns-resolver", "bson-3"]` **compiles on Windows** with no extra tools: it uses `rustls` with `ring`, and `aws-lc-sys` (which would need CMake and NASM) is not in the dependency tree. `dns-resolver` brings the SRV lookups Atlas needs.
+- The driver requires `compat-3-3-0` to be enabled explicitly.
+- **Two TLS stacks:** PostgreSQL uses `native-tls` (the Windows store), MongoDB would use `rustls`. `rustls-tls` ships bundled public roots (`webpki-roots`) and does **not** read the Windows certificate store, so a company server with a private CA needs its CA given as a PEM file (the same "custom CA" field PG already has). Atlas works with the bundled roots.
+- **Not measured yet:** the binary-size increase (needs a release build that actually uses the driver) and `cargo audit` on the new dependencies. Both are acceptance criteria for M0.
+- The change was reverted rather than committed, because an unused dependency adds nothing; it is re-added together with the first code that uses it.
 
-Cada fase termina con algo usable, pruebas automáticas y una revisión en la aplicación real. Tamaño relativo: S pequeño, M mediano, L grande.
+### 4.2 Code architecture
+- Profile: `engine: postgres | mongodb`, and for Mongo its own fields (hosts, `srv`, auth database, replica set, TLS, read preference). The URI is built when connecting; **the password is never part of the stored URI**.
+- Backend: folder `src-tauri/src/mongo/` with `session`, `browse`, `schema`, `edit`, `import_export`. Commands prefixed `mongo_` so the PostgreSQL ones are untouched. No shared abstraction is forced ahead of time: only what really coincides (profiles, sessions, errors, limits) is extracted once there are two implementations.
+- Sessions: one connection per profile (the driver already pools); the session key includes the engine so they are not mixed with PG's.
+- UI: `Tab` gains kinds `collection`, `mongo-query` and `indexes`; the sidebar tree is fed per engine. SQL components must not know about Mongo and vice versa.
 
-**M0 — Fundamentos (M)**
-- Spike del driver (compilación en Windows, tamaño, `cargo audit`).
-- Campo `engine` en el perfil, con migración que deja `postgres` en los existentes.
-- Pantalla de inicio con las dos tarjetas (la de Mongo detrás de un aviso hasta M1).
-- Formulario de conexión por motor y detección del motor al pegar una cadena.
-- Base de pruebas: `mongod` desechable y variables `HYRAX_MONGO_TEST_*` (ver sección 7).
+### 4.3 Console: JSON, not JavaScript
+- Phase 1: **Find** tabs (filter, projection, sort, limit) and **Aggregate** tabs (pipeline as a JSON array), with a CodeMirror editor in JSON mode and field autocomplete from sampling.
+- A `db.collection.find({...}).sort({...})` syntax can be added later with **our own parser** of a safe subset. **No JavaScript is executed** (no `eval`, and no `$where`/`$function` by default): that would be the easiest way around the protections.
 
-**M1 — Conectar y explorar, solo lectura (L)** → *primer hito útil para tu uso*
-- Conexión (hosts, SRV, usuario, base de autenticación, TLS con CA), probar y guardar.
-- Árbol de bases y colecciones; conteo y tamaño.
-- Pestaña de colección: paginación, filtro JSON, orden, proyección, visor de documento con tipos.
-- Producción marcada, tiempo máximo y cancelar.
-- Riesgo a vigilar: rendimiento con colecciones enormes y documentos grandes.
+### 4.4 Timeouts, cancellation and caps
+- `maxTimeMS` as the maximum time per query (same values as PG, with a lower cap in production).
+- Cancel = close the cursor and, if needed, `killOp`.
+- Batches are loaded with a cap on documents and size (a document can weigh up to 16 MB); the exact count is optional, as in PG.
 
-**M2 — Consulta y análisis (L)**
-- Consola Find y Aggregate, historial, copiar como `mongosh`.
-- Índices y estadísticas, esquema por muestreo, `explain` en árbol.
-- Exportar a JSON, NDJSON y CSV.
+## 5. Security: what changes compared with PostgreSQL
 
-**M3 — Escritura segura (L)**
-- Insertar, editar y eliminar documentos con vista previa y control de concurrencia.
-- Importar NDJSON/JSON/CSV con ensayo (conteo).
-- Eliminar colección o base con confirmación; crear índice.
+In PostgreSQL read-only mode relies on `default_transaction_read_only`, a server-side option. **MongoDB has no per-session equivalent.** So:
 
-**M4 — Conexión avanzada y cierre (M)**
-- Túnel SSH hacia Mongo, autenticación X.509/AWS si hace falta.
-- Revisión de seguridad específica de Mongo, `cargo audit`, documentación y README al día, prueba del instalador.
+1. **The real barrier is the user's role:** document and require, in the guide, an account with the `read` role. Example for `SECURITY-REVIEW.md`: `db.createUser({user:"hyrax_ro", pwd:passwordPrompt(), roles:[{role:"read", db:"my_database"}]})`.
+2. **In the application, read-only is a guardrail:** the console only allows read operations (`find`, `aggregate`, `count`, `distinct`, `explain`); aggregations are inspected and the **`$out` and `$merge` stages are rejected**, as well as `$function`/`$accumulator`/`$where` (server-side JavaScript). Any command not on the list is rejected.
+3. **Writing:** the same expiring window (10 minutes), typed confirmation of the database name in production, validated in the backend too.
+4. **There is no free `ROLLBACK`:** transactions only exist on replica sets and sharded clusters. The "dry run" will be a **preview**: how many documents match the filter and a sample of them, before an `updateMany` or `deleteMany`. If the server supports transactions, a real dry run can be offered later.
+5. **Concurrent-change detection when editing:** the `replaceOne`/`updateOne` filter includes `_id` and the original value of the modified fields (or of the whole document), so another person's change is not overwritten.
+6. **Destructive operations** (`drop`, `deleteMany` with no filter, `updateMany` with no filter): stronger warning and the exact operation shown, like PG's SQL.
+7. The same credential rules: password in the system store, never in `profiles.json`, never in the stored URI nor in the history.
 
-Orden recomendado: M0 → M1 → M2 → M3 → M4, publicando cada una. M1 ya permite mirar una base real de forma segura.
+## 6. Phases
 
-## 7. Estrategia de pruebas
+Each phase ends with something usable, automated tests and a check in the real application. Relative size: S small, M medium, L large.
 
-- **Unitarias** sin servidor: construcción de URI, validación de filtros y pipelines (rechazo de `$out`, `$merge`, JavaScript), conversión BSON ↔ JSON extendido, topes.
-- **Integración** contra un **`mongod` desechable**: ya hay MongoDB Server 8.0 y `mongosh` instalados en tu equipo (`C:\Program Files\MongoDB`). Se arranca otra instancia con `--dbpath` en una carpeta temporal y un puerto distinto (por ejemplo 27018), y se borra al terminar. Para probar transacciones y `explain` realista hará falta un conjunto de réplicas de un solo nodo.
-- **Regla fija:** el servicio de MongoDB que ya corre en tu equipo (puerto 27017) **no se usa para escribir**; solo lecturas y solo con tu permiso. Las pruebas de escritura exigirán que la base se llame `scratch`, como en PG, y variables `HYRAX_MONGO_TEST_*`.
-- **Aplicación real** con el depurador de WebView2 y una identidad aislada (como se hizo con PG), incluida una conexión a través del túnel SSH cuando llegue M4.
-- Pruebas de interfaz con el backend simulado, como las actuales.
+**M0 — Foundations (M)**
+- Re-add the driver and measure binary size and `cargo audit` (acceptance criteria from the spike).
+- `engine` field in the profile, with a migration that leaves existing ones as `postgres`.
+- Start screen as a light connection list with "New connection → choose engine" (the Mongo option stays disabled until M1).
+- One connection form per engine and engine detection when pasting a string.
+- Test base: disposable `mongod` and `HYRAX_MONGO_TEST_*` variables (see section 7).
 
-## 8. Riesgos y puntos abiertos
+**M1 — Connect and explore, read-only (L)** → *first useful milestone*
+- Connection to **local, Atlas (`mongodb+srv`) and a company server**: hosts, SRV, user, auth database, TLS with a custom CA file; test and save.
+- Tree of databases and collections; count and size.
+- Collection tab: pagination, quick filter bar and JSON filter, sort, projection, document viewer with types.
+- Production marking, time limit and cancel.
+- Risk to watch: performance with huge collections and large documents.
 
-| Riesgo | Mitigación |
+**M2 — Query and analysis (L)**
+- Find and Aggregate console with the comfort features of decision 1, history, copy as `mongosh`.
+- Indexes and statistics, schema by sampling, `explain` as a tree.
+- Export to JSON, NDJSON and CSV.
+
+**M3 — Safe writing (L)**
+- Insert, edit and delete documents with preview and concurrency control.
+- Import NDJSON/JSON/CSV with a dry run (count).
+- Drop a collection or database with confirmation; create an index.
+
+**M4 — Advanced connection and wrap-up (M)**
+- SSH tunnel to Mongo, X.509/AWS authentication if needed.
+- Mongo-specific security review, `cargo audit`, up-to-date documentation and README, installer test.
+
+Recommended order: M0 → M1 → M2 → M3 → M4, releasing each one. M1 already lets you look at a real database safely.
+
+## 7. Testing strategy
+
+- **Unit tests** without a server: URI building, validation of filters and pipelines (rejecting `$out`, `$merge`, JavaScript), BSON ↔ Extended JSON conversion, caps.
+- **Integration tests** against a **disposable `mongod`**: MongoDB Server 8.0 and `mongosh` are already installed on the developer machine (`C:\Program Files\MongoDB`). Another instance is started with `--dbpath` in a temporary folder and a different port (for example 27018) and deleted when done. A single-node replica set will be needed to test transactions and realistic `explain`.
+- **Fixed rule:** the MongoDB service already running on the machine (port 27017) is **not used for writing**; reads only, and only with the owner's permission. Write tests will require the database to be named `scratch`, as in PG, and `HYRAX_MONGO_TEST_*` variables.
+- **Real application** driven through the WebView2 debugger with an isolated identity (as done for PG), including a connection through the SSH tunnel when M4 arrives.
+- UI tests with a mocked backend, like the current ones.
+
+## 8. Risks and open points
+
+| Risk | Mitigation |
 |---|---|
-| El driver oficial exige herramientas de compilación o infla el binario | Spike en M0 antes de comprometer el diseño |
-| Falso sentido de seguridad del "solo lectura" | Decirlo en la interfaz y en `SEGURIDAD.md`; exigir rol `read` |
-| Túnel SSH + conjuntos de réplicas: el driver descubre los nombres internos de los nodos y salta el túnel | Usar `directConnection=true` por el túnel; avisar de la limitación; verificar TLS contra el nombre real del servidor |
-| Documentos enormes o colecciones de miles de millones | Topes de tamaño y de documentos, conteo estimado por defecto, nada de `skip` grande sin aviso |
-| Tipos BSON que se pierden al editar | Editar siempre sobre JSON extendido canónico |
-| Dependencias nuevas con avisos de seguridad | `cargo audit` en cada fase y registro en `SEGURIDAD.md` |
-| Alcance: Mongo es un segundo producto dentro del primero | Fases con entregables; no abstraer en exceso antes de tener M1 funcionando |
-
-## 9. Decisiones que necesito de ti
-
-Propongo un valor por defecto para cada una; con tu respuesta se cierra M0.
-
-1. **Consola:** ¿empezamos con JSON puro (Find/Aggregate) y dejamos la sintaxis `db.col.find()` para después? *Propuesto: sí.*
-2. **Escritura en la primera versión de Mongo:** ¿M1 y M2 solo lectura y la escritura llega en M3? *Propuesto: sí, para poder usarlo ya con bases de empresa.*
-3. **Tu Mongo real:** ¿dónde está (local, Atlas con `mongodb+srv`, servidor de la empresa), con qué autenticación y con TLS? Eso define qué conexión y qué prueba son prioritarias, y si el túnel SSH sube de prioridad.
-4. **Pantalla de inicio:** ¿tarjetas grandes de motor más lista de recientes (como se describe arriba) o prefieres algo más sobrio, solo una lista con un botón «Nueva conexión» que pregunte el motor?
-5. **Nombre de colección en la interfaz:** ¿"colección/documento" tal cual, o unificar términos con SQL ("tabla/fila") en lo que sea común?
+| Binary grows more than acceptable with the official driver | Measure in M0 before committing to the design; if it does not fit, evaluate another route |
+| Company server with a private CA does not verify (rustls does not read the Windows store) | Custom CA PEM field, same as PG; documented |
+| False sense of security from "read-only" | Say it in the UI and in `SECURITY-REVIEW.md`; require the `read` role |
+| SSH tunnel + replica sets: the driver discovers the nodes' internal names and bypasses the tunnel | Use `directConnection=true` through the tunnel; warn about the limitation; verify TLS against the real server name (M4; Atlas does not need it) |
+| Huge documents or collections with billions of entries | Caps on size and documents, estimated count by default, no large `skip` without a warning |
+| BSON types lost when editing | Always edit on canonical Extended JSON |
+| New dependencies with security notices | `cargo audit` in each phase and a record in `SECURITY-REVIEW.md` |
+| Scope: Mongo is a second product inside the first | Phases with deliverables; do not over-abstract before M1 works |
+| A JSON console may feel slower than `mongosh` syntax | Comfort features in M2 (autocomplete, templates, quick filters); parser for `db.col.find()` as a later phase if it is still missed |
