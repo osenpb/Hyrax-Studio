@@ -49,9 +49,9 @@ Estado: ✅ hecho · 🟡 parcial · ⬜ pendiente
 - 🟡 Instalador (se genera sin firmar); ⬜ firma de código y actualizaciones automáticas.
 - Revisión de seguridad antes de cada versión.
 
-## Después de la versión para PostgreSQL
+## MongoDB (en planificación)
 
-- Volver a este gestor para que también funcione con **MongoDB**. Se retoma solo cuando las etapas 12 a 14 estén terminadas. Habrá que decidir si se separa una capa común (conexiones, árbol, editor, exportación) con un adaptador por motor, porque gran parte de lo actual (SQL, edición por clave primaria, transacciones, `EXPLAIN`, DDL, importación) es específico de Postgres. Se mantienen las reglas de seguridad: solo lectura por defecto, producción marcada con confirmación y credenciales en el almacén del sistema.
+- **Soporte para MongoDB**, con pantalla de inicio para elegir motor. Se decidió (2026-11-11) planificarlo ya, en paralelo a las etapas 12 a 14. Alcance, decisiones, fases (M0 a M4) y riesgos en [MONGODB.md](MONGODB.md). Se mantienen las reglas de seguridad: solo lectura por defecto, producción marcada con confirmación y credenciales en el almacén del sistema; en Mongo el solo lectura es un guardarraíl más débil (no hay equivalente por sesión) y la barrera real es un usuario con rol `read`.
 
 ## Limitaciones conocidas
 - Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la rejilla.
