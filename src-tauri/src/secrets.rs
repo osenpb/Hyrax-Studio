@@ -63,4 +63,19 @@ mod tests {
         assert_eq!(get(&id).unwrap(), None);
         delete(&id).unwrap();
     }
+
+    #[test]
+    fn legacy_pgdesk_password_is_moved_to_the_new_service_on_first_read() {
+        let id = format!("hyrax-legacy-{}", std::process::id());
+        let _ = delete(&id);
+        let old = Entry::new(LEGACY_SERVICE, &id).unwrap();
+        old.set_password("clave vieja").unwrap();
+
+        assert_eq!(get(&id).unwrap().as_deref(), Some("clave vieja"));
+        // Quedó en el servicio nuevo y se borró del viejo.
+        assert!(matches!(old.get_password(), Err(Error::NoEntry)));
+        assert_eq!(Entry::new(SERVICE, &id).unwrap().get_password().unwrap(), "clave vieja");
+
+        delete(&id).unwrap();
+    }
 }
