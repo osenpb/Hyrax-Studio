@@ -1,64 +1,64 @@
-# Hoja de ruta
+# Roadmap
 
-Meta del producto: un cliente de PostgreSQL con las funciones esenciales de DataGrip, pero ligero (binario pequeño, arranque inmediato, poca memoria) gracias a Rust y Tauri. Se prioriza lo que se usa todos los días y lo que evita accidentes en producción.
+Product goal: a database client with DataGrip's essential features but lightweight (small binary, instant startup, low memory) thanks to Rust and Tauri. Priority goes to what is used every day and to what prevents accidents in production.
 
-Estado: ✅ hecho · 🟡 parcial · ⬜ pendiente
+Status: ✅ done · 🟡 partial · ⬜ pending
 
-## Hecho
+## Done
 
-| Etapa | Contenido |
+| Stage | Contents |
 |---|---|
-| 0 Fundamentos | Estructura del proyecto, Tauri 2 + React, documentación |
-| 1 Conexión y metadatos | Conexión con y sin TLS, schemas, tablas, columnas, claves primarias |
-| 2 Navegador | Árbol servidor → bases → schemas → objetos → columnas, carga perezosa, filtro |
-| 3 Visor de tabla | Paginación, orden, conteos, estructura, inspector de celda |
-| 4 Editor SQL | Varios statements, resultados en pestañas, errores detallados |
-| 5 Conexiones | Guardadas, con la contraseña en el almacén del sistema |
-| 5b Robustez | Solo lectura, cancelar, límite de tiempo, resultados en streaming con tope |
-| 6 Editor | CodeMirror, autocompletado de tablas y columnas, historial, formato, Explicar/Analizar |
-| 7 Datos | Filtros por columna, orden por varias columnas, exportar CSV/JSON/INSERT, copiar filas, JSON formateado |
-| 8 Edición | Celdas, filas nuevas y eliminadas en cambios pendientes, revisión del SQL, aplicación atómica con control de concurrencia |
-| Seguridad | Producción marcada, confirmación en el servidor, TLS verificado, CSP, sentencias peligrosas, ensayo con ROLLBACK. Ver `SEGURIDAD.md` |
-| 9 Navegar el esquema | Ctrl+N (tablas, vistas, vistas materializadas, foráneas, funciones, procedimientos, secuencias) y paleta de comandos Ctrl+Mayús+A; DDL de tablas, vistas, funciones y secuencias; claves foráneas navegables en ambos sentidos; pestaña Estructura completa (columnas, FKs, referencias, índices, constraints, triggers, estadísticas y tamaño) |
-| 10 Consola SQL | Ctrl+Enter ejecuta la sentencia del cursor y Ctrl+Mayús+Enter todo el script; parámetros `:nombre`; autocompletado de alias, JOIN sugerido por FK, funciones con su firma y 17 plantillas; abrir y guardar scripts `.sql`; buscar y reemplazar; plan de ejecución en árbol con el nodo más costoso resaltado; resultados fijados para comparar |
-| 11 Datos avanzados | Importar CSV/TSV/JSON con asignación de columnas, vista previa, ensayo con ROLLBACK y una sola transacción; comparar dos resultados fijados; vista de fila como formulario con editor de JSON, arreglos y texto largo; edición con filtros activos; rejilla virtualizada |
+| 0 Foundations | Project structure, Tauri 2 + React, documentation |
+| 1 Connection and metadata | Connection with and without TLS, schemas, tables, columns, primary keys |
+| 2 Navigator | Server → databases → schemas → objects → columns tree, lazy loading, filter |
+| 3 Table viewer | Pagination, sorting, counts, structure, cell inspector |
+| 4 SQL editor | Multiple statements, results in tabs, detailed errors |
+| 5 Connections | Saved, with the password in the system credential store |
+| 5b Robustness | Read-only mode, cancel, time limit, streamed results with a cap |
+| 6 Editor | CodeMirror, table and column autocomplete, history, formatting, Explain/Analyze |
+| 7 Data | Per-column filters, multi-column sorting, export CSV/JSON/INSERT, copy rows, formatted JSON |
+| 8 Editing | Cells, new and deleted rows as pending changes, SQL review, atomic apply with concurrency control |
+| Security | Production marking, server-side confirmation, verified TLS, CSP, dangerous statements, dry run with ROLLBACK. See `SECURITY-REVIEW.md` |
+| 9 Schema navigation | Ctrl+N (tables, views, materialized views, foreign tables, functions, procedures, sequences) and the Ctrl+Shift+A command palette; DDL for tables, views, functions and sequences; foreign keys navigable both ways; full Structure tab (columns, FKs, references, indexes, constraints, triggers, statistics and size) |
+| 10 SQL console | Ctrl+Enter runs the statement at the cursor and Ctrl+Shift+Enter the whole script; `:name` parameters; autocomplete of aliases, JOIN suggested from FKs, functions with their signature and 17 snippets; open and save `.sql` scripts; find and replace; execution plan as a tree with the most expensive node highlighted; pinned results to compare |
+| 11 Advanced data | Import CSV/TSV/JSON with column mapping, preview, ROLLBACK dry run and a single transaction; compare two pinned results; row view as a form with JSON editor, arrays and long text; editing with active filters; virtualized grid |
 
-## Pendiente de las etapas 9 a 11
+## Pending from stages 9 to 11
 
-- 🟡 **Edición sobre vistas actualizables.** No se hizo: una vista no tiene clave primaria, así que el control de concurrencia por fila no tiene en qué apoyarse. Habría que resolver la tabla base y qué columnas de la vista llevan su clave.
-- 🟡 **Palabras clave según el contexto** en el autocompletado: hoy se ofrecen las del dialecto PostgreSQL sin filtrarlas por la posición del cursor.
-- 🟡 **Scripts guardados**: se abren y guardan como archivos `.sql` donde el usuario elija (por ejemplo, dentro de un repositorio git), pero no hay un panel con una carpeta de scripts. Tampoco hay plantillas definidas por el usuario.
-- 🟡 **Comparar dos tablas**: se comparan las filas que están cargadas (una página de la tabla o el resultado de `SELECT * FROM …`, hasta 5.000 filas), con aviso si el resultado está truncado. No hay una comparación completa de tablas enormes.
-- 🟡 **Ir a objeto** no incluye índices, constraints, triggers, tipos ni dominios como entradas propias; los tres primeros se ven en la pestaña Estructura y van dentro del DDL de la tabla.
+- 🟡 **Editing through updatable views.** Not done: a view has no primary key, so per-row concurrency control has nothing to rely on. It would need to resolve the base table and which view columns carry its key.
+- 🟡 **Context-aware keywords** in autocomplete: today the PostgreSQL dialect keywords are offered without filtering by cursor position.
+- 🟡 **Saved scripts**: they are opened and saved as `.sql` files wherever the user chooses (for example, inside a git repository), but there is no panel with a scripts folder. There are no user-defined snippets either.
+- 🟡 **Comparing two tables**: the rows that are loaded are compared (a page of the table or the result of `SELECT * FROM …`, up to 5,000 rows), with a warning if the result is truncated. There is no full comparison of huge tables.
+- 🟡 **Go to object** does not list indexes, constraints, triggers, types or domains as entries of their own; the first three are visible in the Structure tab and included in the table's DDL.
 
-## Siguiente
+## Next
 
-### Etapa 12 — Diagramas y comparación de esquemas
-- Diagrama ER de un schema o de una tabla y sus vecinas.
-- Comparar el esquema de dos bases y generar el script de diferencias.
-- Revisión de diseño: avisos sobre malas prácticas (FK sin índice, tablas sin clave primaria, tipos poco adecuados…) usando la misma estructura que ya expone la pestaña Estructura.
+### Stage 12 — Diagrams and schema comparison
+- ER diagram of a schema or of a table and its neighbours.
+- Compare the schema of two databases and generate the difference script.
+- Design review: warnings about bad practices (FK without index, tables without a primary key, unsuitable types…) using the same structure the Structure tab already exposes.
 
-### Etapa 13 — Operación
-- Monitor de sesiones y bloqueos (`pg_stat_activity`), con cancelar o terminar una consulta.
-- Estadísticas de tablas e índices, tamaños, tablas hinchadas.
-- Roles, privilegios y extensiones.
+### Stage 13 — Operations
+- Session and lock monitor (`pg_stat_activity`), with cancel or terminate a query.
+- Table and index statistics, sizes, bloated tables.
+- Roles, privileges and extensions.
 
-### Etapa 14 — Conexión y distribución
-- ✅ Túnel SSH (clave privada o contraseña, huella del servidor fijada en la conexión) y cadenas de conexión `postgresql://…`.
-- ⬜ Túnel SSH con `ssh-agent` y saltos; importar conexiones de DBeaver y pgAdmin.
-- 🟡 Instalador (se genera sin firmar); ⬜ firma de código y actualizaciones automáticas.
-- Revisión de seguridad antes de cada versión.
+### Stage 14 — Connection and distribution
+- ✅ SSH tunnel (private key or password, server host key pinned to the connection) and `postgresql://…` connection strings.
+- ⬜ SSH tunnel with `ssh-agent` and jump hosts; import connections from DBeaver and pgAdmin.
+- 🟡 Installer (built unsigned); ⬜ code signing and automatic updates.
+- Security review before every release.
 
-## MongoDB (en planificación)
+## MongoDB (being planned)
 
-- **Soporte para MongoDB**, con pantalla de inicio para elegir motor. Se decidió (2026-11-11) planificarlo ya, en paralelo a las etapas 12 a 14. Alcance, decisiones, fases (M0 a M4) y riesgos en [MONGODB.md](MONGODB.md). Se mantienen las reglas de seguridad: solo lectura por defecto, producción marcada con confirmación y credenciales en el almacén del sistema; en Mongo el solo lectura es un guardarraíl más débil (no hay equivalente por sesión) y la barrera real es un usuario con rol `read`.
+- **MongoDB support**, with a start screen to choose the engine. It was decided (2026-11-11) to plan it now, in parallel with stages 12 to 14. Scope, decisions, phases (M0 to M4) and risks are in [MONGODB.md](MONGODB.md). The security rules stay: read-only by default, production marked with confirmation and credentials in the system store; in Mongo, read-only is a weaker guardrail (there is no per-session equivalent) and the real barrier is a user with the `read` role.
 
-## Limitaciones conocidas
-- Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la rejilla.
-- Si un resultado supera 100.000 filas, Hyrax cancela la consulta en el servidor y muestra "100.000+"; las sentencias posteriores de un script no se ejecutan. En pantalla se guardan hasta 5.000 filas por resultado.
-- La importación admite hasta 200.000 filas por archivo y 64 MB; el archivo debe estar en UTF-8.
-- Los parámetros `:nombre` se sustituyen como literales de texto escapados (no son parámetros enlazados del protocolo); no se detectan dentro de cadenas, comentarios ni bloques `$$`.
-- Las firmas de las funciones se muestran en el autocompletado, pero no se rellenan los argumentos.
-- El solo lectura de la aplicación es un guardarraíl, no una barrera de seguridad (ver `SEGURIDAD.md`).
-- Requiere PostgreSQL 11 o superior para el catálogo de funciones (`prokind`) y claves foráneas de particiones.
-- Solo probado en Windows.
+## Known limitations
+- All values are shown as text (Postgres simple protocol); there are no native types in the grid.
+- If a result exceeds 100,000 rows, Hyrax cancels the query on the server and shows "100,000+"; later statements of a script are not run. Up to 5,000 rows per result are kept on screen.
+- Import supports up to 200,000 rows per file and 64 MB; the file must be UTF-8.
+- `:name` parameters are substituted as escaped text literals (they are not bound protocol parameters); they are not detected inside strings, comments or `$$` blocks.
+- Function signatures are shown in autocomplete, but their arguments are not filled in.
+- The application's read-only mode is a guardrail, not a security barrier (see `SECURITY-REVIEW.md`).
+- Requires PostgreSQL 11 or later for the function catalog (`prokind`) and partition foreign keys.
+- Tested on Windows only.
