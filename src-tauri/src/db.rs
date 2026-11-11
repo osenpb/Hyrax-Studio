@@ -115,18 +115,17 @@ pub fn table_select_sql(
     schema: &str,
     table: &str,
     filters: &[ColumnFilter],
-    order_by: Option<&str>,
-    descending: bool,
+    order: &[SortKey],
     page: Option<(u32, u64)>,
 ) -> Result<String, String> {
     let mut sql = format!("SELECT * FROM {}.{}", quote_ident(schema), quote_ident(table));
     sql.push_str(&build_where(filters)?);
-    if let Some(column) = order_by {
-        sql.push_str(&format!(
-            " ORDER BY {} {}",
-            quote_ident(column),
-            if descending { "DESC" } else { "ASC" }
-        ));
+    if !order.is_empty() {
+        let keys: Vec<String> = order
+            .iter()
+            .map(|k| format!("{} {}", quote_ident(&k.column), if k.descending { "DESC" } else { "ASC" }))
+            .collect();
+        sql.push_str(&format!(" ORDER BY {}", keys.join(", ")));
     }
     if let Some((limit, offset)) = page {
         sql.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
@@ -439,10 +438,9 @@ pub async fn table_page(
     limit: u32,
     offset: u64,
     filters: &[ColumnFilter],
-    order_by: Option<&str>,
-    descending: bool,
+    order: &[SortKey],
 ) -> Result<TablePage, String> {
-    let sql = table_select_sql(schema, table, filters, order_by, descending, Some((limit, offset)))?;
+    let sql = table_select_sql(schema, table, filters, order, Some((limit, offset)))?;
 
     let started = Instant::now();
     let mut sets = run_simple(session, &sql, limit as usize, TABLE_TIMEOUT_MS).await?;
@@ -535,7 +533,15 @@ mod tests {
         let columns = list_columns(client, "public", &table.name).await.unwrap();
         assert!(!columns.is_empty());
 
-        let page = table_page(&session, "public", &table.name, 5, 0, &[], Some(&columns[0].name), true)
+        let page = table_page(
+            &session,
+            "public",
+            &table.name,
+            5,
+            0,
+            &[],
+            &[SortKey { column: columns[0].name.clone(), descending: true }],
+        )
             .await
             .unwrap();
         assert_eq!(page.result.columns.len(), columns.len());
@@ -673,6 +679,21 @@ mod tests {
         assert!(build_where(&[filter("a", FilterOp::Equals, Some("x\0y"))]).is_err());
     }
 
+    #[test]
+    fn select_sql_orders_by_several_columns_in_priority_order() {
+        let order = [
+            SortKey { column: "last".into(), descending: false },
+            SortKey { column: "a\"ge".into(), descending: true },
+        ];
+        let sql = table_select_sql("public", "people", &[], &order, Some((50, 100))).unwrap();
+        assert_eq!(
+            sql,
+            "SELECT * FROM \"public\".\"people\" ORDER BY \"last\" ASC, \"a\"\"ge\" DESC LIMIT 50 OFFSET 100"
+        );
+        let plain = table_select_sql("public", "people", &[], &[], None).unwrap();
+        assert_eq!(plain, "SELECT * FROM \"public\".\"people\"");
+    }
+
     #[tokio::test]
     #[ignore]
     async fn filters_narrow_the_page_and_resist_injection() {
@@ -682,7 +703,7 @@ mod tests {
         let columns = list_columns(&session.client, "public", &table.name).await.unwrap();
         let first = &columns[0].name;
 
-        let all = table_page(&session, "public", &table.name, 50, 0, &[], None, false)
+        let all = table_page(&session, "public", &table.name, 50, 0, &[], &[])
             .await
             .unwrap();
         assert!(all.estimated_rows.is_some() || all.result.rows.len() <= 50);
@@ -695,8 +716,7 @@ mod tests {
             50,
             0,
             &[filter(first, FilterOp::Equals, Some(&sample))],
-            None,
-            false,
+            &[],
         )
         .await
         .unwrap();
@@ -711,8 +731,7 @@ mod tests {
             50,
             0,
             &[filter(first, FilterOp::Contains, Some("__no_existe__"))],
-            None,
-            false,
+            &[],
         )
         .await
         .unwrap();
@@ -725,8 +744,7 @@ mod tests {
             50,
             0,
             &[filter(first, FilterOp::Contains, Some("'; DROP TABLE x; --"))],
-            None,
-            false,
+            &[],
         )
         .await
         .unwrap();

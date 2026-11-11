@@ -1053,3 +1053,33 @@ button.toggled {
 .menu-item small {
   color: var(--muted);
 }
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.grid tr.row-selected td:not(.selected) {
+  background: var(--accent-soft);
+}
+.grid .rownum.selectable {
+  cursor: pointer;
+}
+.grid .rownum.selectable:hover {
+  color: var(--accent);
+}
+.grid .sort sup {
+  font-size: 9px;
+  margin-left: 1px;
+}
+.segmented.small-seg button {
+  padding: 1px 9px;
+  font-size: 11px;
+}
+.grid-wrap:focus {
+  outline: none;
+}

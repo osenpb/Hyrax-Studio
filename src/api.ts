@@ -72,6 +72,11 @@ export interface ColumnFilter {
   value: string | null;
 }
 
+export interface SortKey {
+  column: string;
+  descending: boolean;
+}
+
 export type ExportFormat = "csv" | "json" | "sql";
 
 export interface ExportResult {
@@ -114,10 +119,8 @@ export const api = {
     limit: number,
     offset: number,
     filters: ColumnFilter[],
-    orderBy: string | null,
-    descending: boolean,
-  ) =>
-    invoke<TablePage>("table_data", { id, schema, table, limit, offset, filters, orderBy, descending }),
+    order: SortKey[],
+  ) => invoke<TablePage>("table_data", { id, schema, table, limit, offset, filters, order }),
   countRows: (id: string, schema: string, table: string, filters: ColumnFilter[]) =>
     invoke<number>("count_rows", { id, schema, table, filters }),
   exportTable: (
@@ -125,12 +128,10 @@ export const api = {
     schema: string,
     table: string,
     filters: ColumnFilter[],
-    orderBy: string | null,
-    descending: boolean,
+    order: SortKey[],
     format: ExportFormat,
     path: string,
-  ) =>
-    invoke<ExportResult>("export_table", { id, schema, table, filters, orderBy, descending, format, path }),
+  ) => invoke<ExportResult>("export_table", { id, schema, table, filters, order, format, path }),
   exportSql: (id: string, sql: string, format: ExportFormat, path: string) =>
     invoke<ExportResult>("export_sql", { id, sql, format, path }),
   runSql: (id: string, sql: string, limit: number, timeoutMs: number) =>

@@ -159,8 +159,7 @@ pub async fn table_data(
     limit: u32,
     offset: u64,
     filters: Vec<ColumnFilter>,
-    order_by: Option<String>,
-    descending: bool,
+    order: Vec<SortKey>,
 ) -> Result<TablePage, String> {
     let limit = limit.clamp(1, 5000);
     let session = session(&state, &id).await?;
@@ -171,8 +170,7 @@ pub async fn table_data(
         limit,
         offset,
         &filters,
-        order_by.as_deref(),
-        descending,
+        &order,
     )
     .await
 }
@@ -208,13 +206,12 @@ pub async fn export_table(
     schema: String,
     table: String,
     filters: Vec<ColumnFilter>,
-    order_by: Option<String>,
-    descending: bool,
+    order: Vec<SortKey>,
     format: ExportFormat,
     path: String,
 ) -> Result<ExportResult, String> {
     let session = session(&state, &id).await?;
-    let sql = db::table_select_sql(&schema, &table, &filters, order_by.as_deref(), descending, None)?;
+    let sql = db::table_select_sql(&schema, &table, &filters, &order, None)?;
     let label = format!("{}.{}", db::quote_ident(&schema), db::quote_ident(&table));
     let rows = export::export_query(&session, &sql, format, &path, &label).await?;
     Ok(ExportResult { rows })

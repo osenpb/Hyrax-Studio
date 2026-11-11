@@ -43,8 +43,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "table_data":
         return {
           result: {
-            columns: ["id", "total"],
-            rows: [["1", "10"]],
+            columns: ["id", "total", "meta"],
+            rows: [["1", "10", '{"a":{"b":2}}']],
             totalRows: 1,
             truncated: false,
             totalIsLowerBound: false,
@@ -112,6 +112,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { format as formatSql } from "sql-formatter";
 import { parseFilter } from "./filters";
+import { toJsonRows, toTsv, tryParseJson } from "./clipboard";
 import App from "./App";
 
 const emptyRects = Object.assign([], { item: () => null });
@@ -391,5 +392,98 @@ describe("exportación", () => {
     const call = calls.find((c) => c.cmd === "export_sql");
     expect(call?.args.format).toBe("sql");
     expect(call?.args.sql).toBe("SELECT 1;");
+  });
+});
+
+describe("portapapeles", () => {
+  it("TSV entrecomilla tabulaciones, saltos y comillas; NULL sale vacío", () => {
+    expect(toTsv(["a", "b"], [["1", null], ["x\ty", 'say "hi"'], ["l1\nl2", "ok"]])).toBe(
+      'a\tb\n1\t\n"x\ty"\t"say ""hi"""\n"l1\nl2"\tok',
+    );
+  });
+
+  it("JSON de filas conserva NULL y el orden de columnas", () => {
+    const out = JSON.parse(toJsonRows(["b", "a"], [["1", null]]));
+    expect(out).toEqual([{ b: "1", a: null }]);
+    expect(Object.keys(out[0])).toEqual(["b", "a"]);
+  });
+
+  it("detecta JSON solo en objetos y arreglos válidos", () => {
+    expect(tryParseJson('{"a":1}')).toEqual({ a: 1 });
+    expect(tryParseJson(" [1,2] ")).toEqual([1, 2]);
+    expect(tryParseJson("123")).toBeUndefined();
+    expect(tryParseJson("{roto")).toBeUndefined();
+    expect(tryParseJson(null)).toBeUndefined();
+  });
+});
+
+describe("rejilla de datos", () => {
+  async function openOrdersTab(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByText("dev_erp"));
+    await user.click(await screen.findByText("erp_db"));
+    await user.dblClick(await screen.findByText("orders"));
+    await screen.findByLabelText("Filtrar total");
+  }
+
+  const lastOrder = () => calls.filter((c) => c.cmd === "table_data").pop()?.args.order;
+
+  it("clic ordena por una columna y Mayús+clic añade más columnas al orden", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openOrdersTab(user);
+
+    await user.click(screen.getByText("id", { selector: "th" }));
+    await waitFor(() => expect(lastOrder()).toEqual([{ column: "id", descending: false }]));
+
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByText("total", { selector: "th" }));
+    await user.keyboard("{/Shift}");
+    await waitFor(() =>
+      expect(lastOrder()).toEqual([
+        { column: "id", descending: false },
+        { column: "total", descending: false },
+      ]),
+    );
+
+    await user.keyboard("{Shift>}");
+    await user.click(screen.getByText("total", { selector: "th" }));
+    await user.keyboard("{/Shift}");
+    await waitFor(() =>
+      expect(lastOrder()).toEqual([
+        { column: "id", descending: false },
+        { column: "total", descending: true },
+      ]),
+    );
+
+    await user.click(screen.getByText("meta", { selector: "th" }));
+    await waitFor(() => expect(lastOrder()).toEqual([{ column: "meta", descending: false }]));
+  });
+
+  it("selecciona filas y las copia como TSV", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openOrdersTab(user);
+
+    await user.click(screen.getByTitle(/seleccionar fila/));
+    expect(await screen.findByText("1 fila seleccionada")).toBeTruthy();
+    await user.click(screen.getByText(/Copiar TSV/));
+    expect(await navigator.clipboard.readText()).toBe('id\ttotal\tmeta\n1\t10\t"{""a"":{""b"":2}}"');
+    expect(await screen.findByText("Copiado")).toBeTruthy();
+
+    await user.click(screen.getByText("Quitar selección"));
+    expect(screen.queryByText("1 fila seleccionada")).toBeNull();
+  });
+
+  it("muestra el JSON formateado en el inspector y permite ver el valor crudo", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openOrdersTab(user);
+
+    await user.click(screen.getByText('{"a":{"b":2}}'));
+    expect(await screen.findByText(/"b": 2/)).toBeTruthy();
+
+    await user.click(screen.getByText("Crudo"));
+    const raw = await screen.findAllByText('{"a":{"b":2}}');
+    expect(raw.some((el) => el.tagName === "PRE")).toBe(true);
   });
 });

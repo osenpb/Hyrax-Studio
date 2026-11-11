@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, errorText, type ColumnFilter, type ColumnInfo, type ExportFormat, type TablePage } from "../api";
+import {
+  api,
+  errorText,
+  type ColumnFilter,
+  type ColumnInfo,
+  type ExportFormat,
+  type SortKey,
+  type TablePage,
+} from "../api";
 import { askExportPath } from "../exporting";
 import { parseFilters } from "../filters";
 import ResultGrid from "./ResultGrid";
@@ -18,8 +26,7 @@ export default function TableTab({ connId, schema, table }: Props) {
   const [view, setView] = useState<"data" | "structure">("data");
   const [pageSize, setPageSize] = useState(200);
   const [offset, setOffset] = useState(0);
-  const [orderBy, setOrderBy] = useState<string | null>(null);
-  const [descending, setDescending] = useState(false);
+  const [sorts, setSorts] = useState<SortKey[]>([]);
   const [page, setPage] = useState<TablePage | null>(null);
   const [exactCount, setExactCount] = useState<number | null>(null);
   const [columns, setColumns] = useState<ColumnInfo[] | null>(null);
@@ -51,14 +58,14 @@ export default function TableTab({ connId, schema, table }: Props) {
     setLoading(true);
     setError(null);
     api
-      .tableData(connId, schema, table, pageSize, offset, applied, orderBy, descending)
+      .tableData(connId, schema, table, pageSize, offset, applied, sorts)
       .then((p) => !cancelled && setPage(p))
       .catch((e) => !cancelled && setError(errorText(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [connId, schema, table, pageSize, offset, applied, orderBy, descending, reloadKey]);
+  }, [connId, schema, table, pageSize, offset, applied, sorts, reloadKey]);
 
   useEffect(() => {
     if (view !== "structure") return;
@@ -72,21 +79,21 @@ export default function TableTab({ connId, schema, table }: Props) {
     };
   }, [view, connId, schema, table, reloadKey]);
 
-  const sort = useCallback(
-    (column: string) => {
-      setOffset(0);
-      if (orderBy !== column) {
-        setOrderBy(column);
-        setDescending(false);
-      } else if (!descending) {
-        setDescending(true);
-      } else {
-        setOrderBy(null);
-        setDescending(false);
+  const sort = useCallback((column: string, additive: boolean) => {
+    setOffset(0);
+    setSorts((prev) => {
+      const index = prev.findIndex((s) => s.column === column);
+      if (additive) {
+        if (index === -1) return [...prev, { column, descending: false }];
+        if (!prev[index].descending) return prev.map((s, i) => (i === index ? { ...s, descending: true } : s));
+        return prev.filter((_, i) => i !== index);
       }
-    },
-    [orderBy, descending],
-  );
+      if (index !== -1 && prev.length === 1) {
+        return prev[0].descending ? [] : [{ column, descending: true }];
+      }
+      return [{ column, descending: false }];
+    });
+  }, []);
 
   const countExact = () => {
     api
@@ -111,7 +118,7 @@ export default function TableTab({ connId, schema, table }: Props) {
     setExporting(true);
     setError(null);
     try {
-      const result = await api.exportTable(connId, schema, table, applied, orderBy, descending, format, path);
+      const result = await api.exportTable(connId, schema, table, applied, sorts, format, path);
       setNotice(`Se exportaron ${result.rows.toLocaleString()} filas a ${path}`);
     } catch (e) {
       setError(errorText(e));
@@ -187,8 +194,7 @@ export default function TableTab({ connId, schema, table }: Props) {
               <ResultGrid
                 result={page.result}
                 rowOffset={offset}
-                orderBy={orderBy}
-                descending={descending}
+                sorts={sorts}
                 onSort={sort}
                 filters={filterInputs}
                 onFilterChange={changeFilter}
