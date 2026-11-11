@@ -44,8 +44,9 @@ Estado: ✅ hecho · 🟡 parcial · ⬜ pendiente
 - Roles, privilegios y extensiones.
 
 ### Etapa 14 — Conexión y distribución
-- Túnel SSH, cadenas de conexión (`postgresql://…`), importar conexiones de DBeaver y pgAdmin.
-- Instalador firmado y actualizaciones automáticas.
+- ✅ Túnel SSH (clave privada o contraseña, huella del servidor fijada en la conexión) y cadenas de conexión `postgresql://…`.
+- ⬜ Túnel SSH con `ssh-agent` y saltos; importar conexiones de DBeaver y pgAdmin.
+- 🟡 Instalador (se genera sin firmar); ⬜ firma de código y actualizaciones automáticas.
 - Revisión de seguridad antes de cada versión.
 
 ## Después de la versión para PostgreSQL
