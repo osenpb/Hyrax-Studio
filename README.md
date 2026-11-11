@@ -1,19 +1,20 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="Logo de Hyrax" width="120" />
+  <img src="src-tauri/icons/icon.png" alt="Logo de Hyrax Studio" width="120" />
 </p>
 
-<h1 align="center">Hyrax</h1>
+<h1 align="center">Hyrax Studio</h1>
 
 <p align="center">
-  Cliente de escritorio para PostgreSQL, ligero y pensado para no romper producción.<br />
+  Cliente de bases de datos de escritorio, ligero y pensado para no romper producción.<br />
+  Hoy para PostgreSQL; MongoDB y otras bases NoSQL están en el plan.<br />
   Rust + Tauri 2 en el backend, React + TypeScript en la interfaz.
 </p>
 
 > **Estado: versión temprana (0.1).** Se usa a diario en desarrollo, pero todavía no se ha probado contra un clúster de producción real ni fuera de Windows. Antes de usarlo en serio, lee [Limitaciones actuales](#limitaciones-actuales).
 
-## Por qué Hyrax
+## Por qué Hyrax Studio
 
-DataGrip y DBeaver hacen mucho; a veces demasiado, y pesan. Hyrax apunta a lo que se usa todos los días (navegar el esquema, consultar, revisar y corregir datos) con un binario pequeño, arranque inmediato y poca memoria. Y con una regla de diseño: **un clic equivocado no debería costar una tabla**. Por eso arranca en solo lectura, pide confirmación para escribir y enseña el SQL exacto antes de aplicar cualquier cambio.
+DataGrip y DBeaver hacen mucho; a veces demasiado, y pesan. Hyrax Studio apunta a lo que se usa todos los días (navegar el esquema, consultar, revisar y corregir datos) con un binario pequeño, arranque inmediato y poca memoria. Y con una regla de diseño: **un clic equivocado no debería costar una tabla**. Por eso arranca en solo lectura, pide confirmación para escribir y enseña el SQL exacto antes de aplicar cualquier cambio.
 
 ## Qué hace
 
