@@ -56,6 +56,10 @@ Estado: ✅ hecho · 🟡 parcial · ⬜ pendiente
 - Instalador firmado y actualizaciones automáticas.
 - Revisión de seguridad antes de cada versión.
 
+## Después de la versión para PostgreSQL
+
+- Volver a este gestor para que también funcione con **MongoDB**. Se retoma solo cuando las etapas 9 a 14 estén terminadas. Habrá que decidir si se separa una capa común (conexiones, árbol, editor, exportación) con un adaptador por motor, porque gran parte de lo actual (SQL, edición por clave primaria, transacciones, `EXPLAIN`) es específico de Postgres. Se mantienen las reglas de seguridad: solo lectura por defecto, producción marcada con confirmación y credenciales en el almacén del sistema.
+
 ## Limitaciones conocidas
 - Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la rejilla.
 - Si un resultado supera 100.000 filas, PgDesk cancela la consulta en el servidor y muestra "100.000+"; las sentencias posteriores de un script no se ejecutan.
