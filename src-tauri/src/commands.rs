@@ -18,15 +18,18 @@ fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 async fn session(state: &State<'_, Sessions>, id: &str) -> Result<Arc<Session>, String> {
-    let mut sessions = state.0.lock().await;
-    match sessions.get(id) {
-        Some(s) if !s.client.is_closed() => Ok(s.clone()),
-        Some(_) => {
+    let found = {
+        let mut sessions = state.0.lock().await;
+        let found = sessions.get(id).cloned();
+        if matches!(&found, Some(s) if s.client.is_closed()) {
             sessions.remove(id);
-            Err("La conexión se cerró. Vuelve a conectarte.".to_string())
+            return Err("La conexión se cerró. Vuelve a conectarte.".to_string());
         }
-        None => Err("La conexión no está abierta.".to_string()),
-    }
+        found
+    };
+    let session = found.ok_or_else(|| "La conexión no está abierta.".to_string())?;
+    db::enforce_write_window(&session).await;
+    Ok(session)
 }
 
 async fn drop_profile_sessions(state: &State<'_, Sessions>, profile_id: &str) {
@@ -137,8 +140,7 @@ pub async fn set_read_only(
     if !enabled {
         db::check_write_unlock(session.production, &session.database, confirm.as_deref())?;
     }
-    db::set_read_only(&session.client, enabled).await?;
-    db::is_read_only(&session.client).await
+    db::apply_mode(&session, enabled).await
 }
 
 #[tauri::command]

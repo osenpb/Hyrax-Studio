@@ -131,6 +131,27 @@ pub fn transaction_control(sql: &str) -> Option<String> {
     None
 }
 
+pub fn switches_to_read_write(sql: &str) -> bool {
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let raw = squash(&sql.to_lowercase());
+    if raw.contains("set_config") {
+        return true;
+    }
+    for statement in statements(sql) {
+        let word = first_word(&statement);
+        let text = squash(&statement.to_lowercase());
+        let touches_mode = |t: &str| t.contains("read_only") || t.contains("read write");
+        match word.as_str() {
+            "reset" => return true,
+            "discard" if text.contains("all") => return true,
+            "set" | "begin" | "start" | "alter" if touches_mode(&text) => return true,
+            "do" if touches_mode(&raw) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,6 +171,42 @@ mod tests {
         assert!(!code_only("SELECT 'it''s COMMIT'").contains("COMMIT"));
         assert!(!code_only("SELECT E'it\\'s COMMIT'").contains("COMMIT"));
         assert!(code_only("SELECT 1; COMMIT").contains("COMMIT"));
+    }
+
+    #[test]
+    fn detects_attempts_to_leave_read_only_mode() {
+        let blocked = [
+            "SET default_transaction_read_only = off",
+            "set  SESSION default_transaction_read_only TO 'off'",
+            "SET transaction_read_only = off",
+            "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE",
+            "BEGIN READ WRITE",
+            "START TRANSACTION  READ   WRITE",
+            "SELECT set_config('default_transaction_read_only', 'off', false)",
+            "RESET ALL",
+            "RESET default_transaction_read_only",
+            "DISCARD ALL",
+            "ALTER ROLE app SET default_transaction_read_only = off",
+            "DO $$ BEGIN EXECUTE 'SET default_transaction_read_only = off'; END $$",
+            "SELECT 1; SET default_transaction_read_only = off",
+        ];
+        for sql in blocked {
+            assert!(switches_to_read_write(sql), "debió bloquearse: {sql}");
+        }
+        let allowed = [
+            "SELECT 'read_only' AS note, read_only FROM settings",
+            "SET search_path = public",
+            "SET statement_timeout = 5000",
+            "BEGIN",
+            "BEGIN READ ONLY",
+            "SELECT 'RESET ALL'",
+            "-- SET default_transaction_read_only = off\nSELECT 1",
+            "DO $$ BEGIN PERFORM 1; END $$",
+            "SELECT * FROM discarded_items",
+        ];
+        for sql in allowed {
+            assert!(!switches_to_read_write(sql), "no debió bloquearse: {sql}");
+        }
     }
 
     #[test]

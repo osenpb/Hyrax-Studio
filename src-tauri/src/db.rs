@@ -1,5 +1,7 @@
 use std::error::Error;
 use std::pin::pin;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use futures_util::TryStreamExt;
@@ -13,6 +15,7 @@ pub const COUNT_CAP: u64 = 100_000;
 pub const TABLE_TIMEOUT_MS: u64 = 60_000;
 pub const COUNT_TIMEOUT_MS: u64 = 300_000;
 pub const PROD_MAX_TIMEOUT_MS: u64 = 300_000;
+pub const WRITE_WINDOW_SECS: u64 = 600;
 
 pub struct Session {
     pub client: Client,
@@ -22,6 +25,9 @@ pub struct Session {
     pub production: bool,
     pub database: String,
     pub ca_cert_path: Option<String>,
+    pub read_only: AtomicBool,
+    pub write_since: Mutex<Option<Instant>>,
+    pub write_window: Duration,
 }
 
 pub fn describe(e: &tokio_postgres::Error) -> String {
@@ -192,6 +198,9 @@ pub async fn connect(profile: &ConnectionProfile) -> Result<Session, String> {
         production: profile.production,
         database: profile.database.clone(),
         ca_cert_path: profile.ca_cert_path.clone(),
+        read_only: AtomicBool::new(profile.read_only),
+        write_since: Mutex::new(None),
+        write_window: Duration::from_secs(WRITE_WINDOW_SECS),
     };
 
     let session = match profile.ssl_mode {
@@ -243,6 +252,35 @@ pub async fn set_read_only(client: &Client, enabled: bool) -> Result<(), String>
         .batch_execute(&format!("SET default_transaction_read_only = {value}"))
         .await
         .map_err(err)
+}
+
+pub fn window_expired(since: Option<Instant>, now: Instant, window: Duration) -> bool {
+    since.is_some_and(|started| now.saturating_duration_since(started) >= window)
+}
+
+pub async fn apply_mode(session: &Session, read_only: bool) -> Result<bool, String> {
+    set_read_only(&session.client, read_only).await?;
+    let actual = is_read_only(&session.client).await?;
+    session.read_only.store(actual, Ordering::SeqCst);
+    *session.write_since.lock().unwrap() = if actual { None } else { Some(Instant::now()) };
+    Ok(actual)
+}
+
+pub async fn enforce_write_window(session: &Session) {
+    let since = *session.write_since.lock().unwrap();
+    if window_expired(since, Instant::now(), session.write_window) {
+        let _ = apply_mode(session, true).await;
+    }
+}
+
+pub fn guard_read_only(session: &Session, sql: &str) -> Result<(), String> {
+    if session.read_only.load(Ordering::SeqCst) && crate::sqlscan::switches_to_read_write(sql) {
+        return Err(
+            "La sesión está en modo solo lectura: no se permite cambiar el modo de transacción desde SQL. Usa el botón de modo del editor."
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 pub(crate) async fn set_timeout(client: &Client, timeout_ms: u64) -> Result<(), String> {
@@ -444,6 +482,7 @@ pub async fn run_sql(
     limit: usize,
     timeout_ms: u64,
 ) -> Result<QueryOutput, String> {
+    guard_read_only(session, sql)?;
     let started = Instant::now();
     let results = run_simple(session, sql, limit, timeout_ms).await?;
     Ok(QueryOutput {
@@ -463,6 +502,7 @@ pub async fn run_sql_dry(
             "El ensayo con ROLLBACK no admite sentencias de control de transacción ({word}). Quítalas o ejecuta la consulta normalmente."
         ));
     }
+    guard_read_only(session, sql)?;
     let started = Instant::now();
     session.client.batch_execute("BEGIN").await.map_err(err)?;
     let outcome = run_simple(session, sql, limit, timeout_ms).await;
@@ -660,6 +700,65 @@ mod tests {
 
         let bad = run_sql(&session, "SELEC 1", 100, 0).await.unwrap_err();
         assert!(bad.contains("syntax"));
+    }
+
+    #[test]
+    fn write_window_expires_only_after_the_configured_time() {
+        let start = Instant::now();
+        let window = Duration::from_secs(600);
+        assert!(!window_expired(None, start + Duration::from_secs(9999), window));
+        assert!(!window_expired(Some(start), start, window));
+        assert!(!window_expired(Some(start), start + Duration::from_secs(599), window));
+        assert!(window_expired(Some(start), start + Duration::from_secs(600), window));
+        assert!(window_expired(Some(start), start + Duration::from_secs(3600), window));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn read_only_sessions_cannot_switch_themselves_to_write_from_sql() {
+        let session = connect(&profile(true).unwrap()).await.unwrap();
+        let attempts = [
+            "SET default_transaction_read_only = off",
+            "BEGIN READ WRITE",
+            "SELECT set_config('default_transaction_read_only', 'off', false)",
+            "RESET ALL",
+            "ALTER ROLE nadie SET default_transaction_read_only = off",
+            "DO $$ BEGIN EXECUTE 'SET default_transaction_read_only = off'; END $$",
+        ];
+        for sql in attempts {
+            let error = run_sql(&session, sql, 10, 0).await.unwrap_err();
+            assert!(error.contains("solo lectura"), "{sql} -> {error}");
+        }
+        assert!(is_read_only(&session.client).await.unwrap());
+
+        let fine = run_sql(&session, "SELECT 'read_only' AS note", 10, 0).await.unwrap();
+        assert_eq!(fine.results[0].rows[0][0].as_deref(), Some("read_only"));
+        assert!(is_read_only(&session.client).await.unwrap());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn write_mode_expires_on_the_server_even_if_the_ui_does_nothing() {
+        let var = |name: &str| std::env::var(name).expect("faltan variables PGDESK_WRITE_TEST_*");
+        let mut profile = tls_profile(SslMode::Disable, None);
+        profile.read_only = true;
+        assert_eq!(var("PGDESK_WRITE_TEST_DB"), "scratch");
+        let mut session = connect(&profile).await.unwrap();
+
+        assert!(!apply_mode(&session, false).await.unwrap());
+        assert!(!session.read_only.load(Ordering::SeqCst));
+        session.write_window = Duration::from_millis(300);
+
+        enforce_write_window(&session).await;
+        assert!(!is_read_only(&session.client).await.unwrap());
+
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        enforce_write_window(&session).await;
+        assert!(is_read_only(&session.client).await.unwrap());
+        assert!(session.read_only.load(Ordering::SeqCst));
+        assert!(session.write_since.lock().unwrap().is_none());
+
+        assert!(apply_mode(&session, true).await.unwrap());
     }
 
     #[tokio::test]
