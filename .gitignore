@@ -3,3 +3,10 @@ dist
 src-tauri/target
 src-tauri/gen
 *.log
+
+# credentials and local secrets
+*.pem
+*.key
+.env
+.env.*
+profiles.json

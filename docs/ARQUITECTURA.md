@@ -44,8 +44,34 @@ React (src/)  ──invoke──▶  Tauri commands (src-tauri/src/commands.rs)
 
 **Paginación con `LIMIT/OFFSET`.** Sencilla y suficiente; degrada en offsets muy grandes. Alternativa futura: paginación por keyset usando la PK.
 
-**Credenciales en `profiles.json` (texto plano) en v0.1.** Decisión de alcance, no de diseño final: el reemplazo es el almacén del sistema operativo (etapa 5 pendiente).
+**Contraseñas en el almacén del sistema.** `profiles.json` guarda solo host, puerto, base, usuario y opciones; la contraseña vive en el Administrador de credenciales (crate `keyring`, servicio `pgdesk`, una entrada por conexión). El webview nunca la recibe: `list_profiles` devuelve un indicador `hasPassword` y el diálogo de edición no la precarga (vacío = conservar). Las conexiones antiguas con la contraseña en el archivo se migran solas, y cada contraseña se relee del almacén antes de borrarla del archivo. Tradeoff: quien controle tu sesión de Windows puede leer el almacén (el límite de confianza habitual) y, si el almacén no está disponible, no se puede conectar en vez de caer a texto plano.
 
-**TLS con `native-tls` (SChannel en Windows).** Sin OpenSSL ni dependencias nativas externas. `require` acepta certificados no verificados, igual que `sslmode=require` de libpq.
+**TLS con `native-tls` (SChannel en Windows).** Sin OpenSSL ni dependencias nativas externas. Tres modos: sin TLS, `require` (cifra sin verificar, como `sslmode=require` de libpq, con aviso en la interfaz) y `verify` (valida la cadena y el nombre de host contra las entidades del sistema o contra un PEM propio). La cancelación abre una segunda conexión y usa el mismo modo. Probado contra un servidor con certificado autofirmado.
 
 **Tauri sobre Electron.** Binario pequeño y backend nativo en Rust; costo: dependencia de WebView2 y curva de Rust en la capa de datos.
+
+## Edición de datos
+
+**Cambios pendientes y una transacción al aplicar.** Editar no toca la base: las celdas modificadas, las filas nuevas y las eliminadas se acumulan en la interfaz (clave por valor de clave primaria, así que sobreviven a cambiar de página u orden). Al aplicar, el backend abre una transacción, ejecuta cada sentencia y confirma solo si todas afectaron exactamente una fila. La alternativa descartada, una transacción abierta mientras se edita, mantiene bloqueos sobre producción durante minutos y se pierde si cae la conexión.
+
+**El backend no confía en el cliente.** Recibe nombres de columna y valores; los tipos de columna y la clave primaria los consulta él en el catálogo. Los valores se enlazan como parámetros de texto y se convierten con `$n::text::tipo`, que pasa por la función de entrada del tipo (sirve para numeric con precisión, fechas, jsonb, arreglos y enums). Se rechazan vistas, tablas foráneas, tablas de sistema y tablas sin clave primaria; la clave primaria de una fila existente no se edita.
+
+**Control de cambios concurrentes.** Cada `UPDATE` incluye `ROW(col)::text IS NOT DISTINCT FROM ROW($n::text::tipo)::text` con el valor original que vio el usuario. Se compara por la representación de salida del registro y no por `col::text` porque ambas pueden diferir (un booleano sale como `t` en la lectura pero `true` con `::text`), lo que hacía fallar filas sin tocar: lo descubrió una prueba contra Postgres real. Si la fila cambió, se cancela todo y se explica.
+
+**Orden por clave primaria por defecto.** Un `UPDATE` mueve físicamente la fila en Postgres; sin `ORDER BY` la fila editada saltaba de posición tras recargar. Si el usuario no eligió un orden y la tabla tiene clave primaria, se ordena por ella (con el índice no cuesta más). Se descubrió usando la aplicación real.
+
+**Cerrojo por sesión.** Cada sesión tiene un `RwLock`: las lecturas lo comparten y los cambios aplicados y el ensayo con ROLLBACK lo toman en exclusiva, para que ninguna otra pestaña intercale consultas dentro de una transacción abierta. La cancelación y el cambio de modo no lo usan, para poder interrumpir una consulta larga.
+
+**Ensayo con ROLLBACK.** Ejecuta el script dentro de `BEGIN … ROLLBACK` y muestra el resultado. Rechaza scripts con `COMMIT`, `BEGIN`, `SAVEPOINT`… al inicio de una sentencia (un `COMMIT` dentro confirmaría el ensayo) usando un escáner que ignora comentarios, cadenas, identificadores entre comillas y bloques `$$`. Limitación: las secuencias avanzan, y los efectos fuera de la transacción (dblink, notificaciones) no se revierten.
+
+## Seguridad
+
+**Solo lectura de dos capas.** `SET default_transaction_read_only = on` al conectar (con `SET`, no como opción de arranque, para que funcione detrás de pgbouncer) y un filtro en el servidor de PgDesk que rechaza las sentencias que lo desactivan (`SET … read_only`, `BEGIN READ WRITE`, `set_config`, `RESET`, `DISCARD ALL`, `DO` con esos textos). Es un guardarraíl contra descuidos: para una barrera real hace falta una cuenta sin permisos de escritura (ver `SEGURIDAD.md`).
+
+**Producción impuesta en el servidor.** Cada sesión conoce si su conexión está marcada como producción; para pasar a escritura el backend exige el nombre exacto de la base, aunque se llame al comando directamente. La caducidad de 10 minutos de la escritura también se aplica en el servidor (al usar la sesión), y las consultas tienen un tope de 5 minutos.
+
+**CSP estricta** (`default-src 'self'`, `script-src 'self'`, sin `unsafe-eval`, sin conexiones externas). Los estilos en línea se permiten porque React y CodeMirror los necesitan. La política de desarrollo es más laxa solo para el servidor de Vite.
+
+**Permisos mínimos de la ventana.** Solo `core:default` y el diálogo de guardar; sin acceso al sistema de archivos ni a la red desde la interfaz. La ruta de exportación se valida otra vez en el backend.
+
+**Probar la aplicación real.** Se arranca con `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` y se maneja por el protocolo de depuración (capturas, clics, consola). Es una variable de entorno de la prueba, no una opción de la aplicación.

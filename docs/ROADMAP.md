@@ -1,49 +1,63 @@
-# Roadmap por etapas
+# Hoja de ruta
+
+Meta del producto: un cliente de PostgreSQL con las funciones esenciales de DataGrip, pero ligero (binario pequeño, arranque inmediato, poca memoria) gracias a Rust y Tauri. Se prioriza lo que se usa todos los días y lo que evita accidentes en producción.
 
 Estado: ✅ hecho · 🟡 parcial · ⬜ pendiente
 
-## Etapa 0 — Fundamentos ✅
-Estructura del proyecto, Tauri 2 + Vite + React, ícono, README, documentación.
+## Hecho
 
-## Etapa 1 — Conexión y metadatos (backend) ✅
-Conexión a Postgres (con y sin TLS), listado de schemas, relaciones y columnas con PK. Test de integración contra servidor real.
+| Etapa | Contenido |
+|---|---|
+| 0 Fundamentos | Estructura del proyecto, Tauri 2 + React, documentación |
+| 1 Conexión y metadatos | Conexión con y sin TLS, schemas, tablas, columnas, claves primarias |
+| 2 Navegador | Árbol servidor → bases → schemas → objetos → columnas, carga perezosa, filtro |
+| 3 Visor de tabla | Paginación, orden, conteos, estructura, inspector de celda |
+| 4 Editor SQL | Varios statements, resultados en pestañas, errores detallados |
+| 5 Conexiones | Guardadas, con la contraseña en el almacén del sistema |
+| 5b Robustez | Solo lectura, cancelar, límite de tiempo, resultados en streaming con tope |
+| 6 Editor | CodeMirror, autocompletado de tablas y columnas, historial, formato, Explicar/Analizar |
+| 7 Datos | Filtros por columna, orden por varias columnas, exportar CSV/JSON/INSERT, copiar filas, JSON formateado |
+| 8 Edición | Celdas, filas nuevas y eliminadas en cambios pendientes, revisión del SQL, aplicación atómica con control de concurrencia |
+| Seguridad | Producción marcada, confirmación en el servidor, TLS verificado, CSP, sentencias peligrosas, ensayo con ROLLBACK. Ver `SEGURIDAD.md` |
 
-## Etapa 2 — Navegador en árbol ✅
-Árbol servidor → bases de datos → schemas → objetos → columnas (clic en una base abre su sesión), carga perezosa, grupos por tipo de objeto, columnas, filtro por nombre, redimensionado del panel.
+## Siguiente: lo esencial de DataGrip
 
-## Etapa 3 — Visor de tabla ✅
-Paginación, ordenación en servidor, conteo estimado/exacto, pestaña Estructura, inspector de celda.
+### Etapa 9 — Navegar el esquema como en DataGrip
+- Ir a cualquier tabla, vista o función por nombre con un atajo (Ctrl+N) y una paleta de comandos (Ctrl+Shift+A).
+- Ver y copiar el DDL de tablas, vistas, índices, constraints, triggers y funciones.
+- Claves foráneas navegables: de un valor al registro relacionado y, desde una tabla, ver quién la referencia.
+- Pestaña de estructura completa: índices, constraints, FKs, triggers, estadísticas y tamaño.
 
-## Etapa 4 — Editor SQL ✅
-Ejecución de uno o varios statements, resultados múltiples, tiempos, errores detallados, límite de filas mostradas.
+### Etapa 10 — Consola SQL de nivel DataGrip
+- Autocompletado de alias, columnas tras `JOIN` (sugiriendo la FK), funciones con su firma y palabras clave según el contexto.
+- Varias consolas por conexión y scripts guardados con nombre, en archivos que se pueden abrir y versionar.
+- Ejecutar la sentencia bajo el cursor, no todo el script; resultados que se pueden fijar para comparar.
+- Parámetros con nombre (`:id`), plantillas (snippets), buscar y reemplazar.
+- Plan de ejecución visual en árbol con los nodos más costosos resaltados.
 
-## Etapa 5 — Conexiones persistentes ✅ (🟡 seguridad)
-Conexiones guardadas en `profiles.json` del directorio de configuración de la app. **Pendiente:** contraseña en el almacén del SO (Credential Manager) en lugar de texto plano.
+### Etapa 11 — Datos avanzados
+- Importar CSV/JSON a una tabla con asignación de columnas y vista previa, dentro de una transacción.
+- Comparar dos resultados o dos tablas.
+- Vista de fila como formulario, y editor de valores JSON, arreglos y texto largo.
+- Edición con filtros activos y con vistas actualizables.
+- Rejilla virtualizada para páginas muy grandes.
 
-## Etapa 5b — Seguridad y robustez ✅ (2026-11-10)
-Modo solo lectura por conexión y por sesión (con confirmación para habilitar escritura), cancelación de consulta en curso, límite de tiempo por consulta, lectura en streaming con tope de 100.000 filas contadas y 1.000 mostradas. Rediseño visual: iconos SVG, tema claro/oscuro/automático, etiquetas de modo en el árbol.
+### Etapa 12 — Diagramas y comparación de esquemas
+- Diagrama ER de un schema o de una tabla y sus vecinas.
+- Comparar el esquema de dos bases y generar el script de diferencias.
 
-## Etapa 6 — Productividad del editor ✅ (2026-11-10)
-CodeMirror 6 con resaltado, números de línea y autocompletado de tablas y columnas del servidor, historial por servidor (100 consultas), formateo SQL (Mayús+Alt+F, respeta la selección), Explicar (`EXPLAIN`) y Analizar (`EXPLAIN ANALYZE`, solo en modo solo lectura) con el plan en texto.
+### Etapa 13 — Operación
+- Monitor de sesiones y bloqueos (`pg_stat_activity`), con cancelar o terminar una consulta.
+- Estadísticas de tablas e índices, tamaños, tablas hinchadas.
+- Roles, privilegios y extensiones.
 
-**Pendiente de esta etapa:** scripts guardados con nombre, plan visual en árbol, autocompletado de funciones y de alias.
+### Etapa 14 — Conexión y distribución
+- Túnel SSH, cadenas de conexión (`postgresql://…`), importar conexiones de DBeaver y pgAdmin.
+- Instalador firmado y actualizaciones automáticas.
+- Revisión de seguridad antes de cada versión.
 
-## Etapa 7 — Datos ✅ (2026-11-10)
-Filtros por columna en el visor (fila de filtros con operadores: texto = contiene, `=x`, `!=x`, `>5`, `>=5`, `<5`, `<=5`, `^x` empieza por, `null`, `!null`), ejecutados en el servidor, con conteo exacto filtrado. Exportación a CSV (UTF-8 con BOM), JSON (con tipos) y SQL INSERT, desde el visor (tabla completa con filtros y orden actuales) y desde el editor SQL (la sentencia o selección), en streaming a archivo y cancelable.
-
-**Pendiente de esta etapa:** ordenación múltiple, copiar filas al portapapeles, vista formateada de valores JSON largos.
-
-## Etapa 8 — Edición de datos ⬜
-Editar celdas, insertar y borrar filas por PK, transacciones explícitas (commit/rollback). El modo solo lectura ya existe (etapa 5b).
-
-## Etapa 9 — Objetos de esquema ⬜
-DDL de tablas, índices, constraints, FK navegables, triggers, secuencias, funciones, vistas; relaciones entre tablas (diagrama ER).
-
-## Etapa 10 — Conexión avanzada y distribución ⬜
-Túnel SSH, verificación de certificado con CA propia, `sslmode` completo, instalador firmado, actualizaciones automáticas.
-
-## Limitaciones conocidas de la v0.1
-- Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la grilla.
-- Si un resultado supera 100.000 filas, PgDesk cancela la consulta en el servidor y muestra "100.000+"; las sentencias posteriores de un script multi-statement no se ejecutan.
-- El modo solo lectura es un guardarraíl (`default_transaction_read_only`): quien escriba `SET default_transaction_read_only = off` o `BEGIN READ WRITE` puede saltarlo. Para una barrera real, conectar con un rol sin permisos de escritura.
-- SSL "requerido" cifra pero no verifica el certificado.
+## Limitaciones conocidas
+- Todos los valores se muestran como texto (protocolo simple de Postgres); no hay tipos nativos en la rejilla.
+- Si un resultado supera 100.000 filas, PgDesk cancela la consulta en el servidor y muestra "100.000+"; las sentencias posteriores de un script no se ejecutan.
+- El solo lectura de la aplicación es un guardarraíl, no una barrera de seguridad (ver `SEGURIDAD.md`).
+- Solo probado en Windows.

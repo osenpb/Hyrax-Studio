@@ -1,16 +1,16 @@
 # PgDesk
 
-Cliente de escritorio para PostgreSQL (estilo DBeaver, mínimo). Rust + Tauri 2 en el backend, React + TypeScript en la UI.
+Cliente de escritorio para PostgreSQL con las funciones esenciales de DataGrip y la ligereza de Rust. Rust + Tauri 2 en el backend, React + TypeScript en la interfaz.
 
-## Qué hace (v0.1)
+## Qué hace
 
-- Gestor de conexiones guardadas (host, puerto, base, usuario, contraseña, SSL opcional) con botón de prueba.
-- Navegador en árbol: conexión → schemas → Tablas / Vistas / Vistas materializadas / Foráneas → columnas (tipo, PK, nulabilidad). Carga perezosa y filtro por nombre.
-- Visor de tabla: paginación (50–1000), orden por columna (clic en cabecera), conteo estimado y conteo exacto bajo demanda, inspector de celda con copiar, pestaña Estructura.
-- Editor SQL: ejecución con Ctrl+Enter (o solo la selección), varios statements con resultados en subpestañas, tiempos, errores de Postgres con detalle y sugerencia.
-- Filtros por columna en el visor de tablas (con operadores como `>5`, `=x`, `^x`, `null`) y exportación a CSV, JSON o SQL INSERT, tanto de tablas completas como de consultas.
-- Editor con resaltado y autocompletado de tablas y columnas, historial por servidor, formateo SQL, Explicar y Analizar con el plan en texto.
-- Seguridad y robustez: conexiones en solo lectura por defecto (habilitar escritura pide confirmación), cancelar consulta en curso, límite de tiempo configurable y resultados grandes en streaming con tope.
+- **Conexiones guardadas** con la contraseña en el almacén de credenciales del sistema, TLS con verificación de certificado, y marca de **producción**.
+- **Navegador** de servidor → bases de datos → schemas → tablas/vistas → columnas, con filtro.
+- **Visor de tablas**: paginación, orden por varias columnas, filtros por columna (`>5`, `=x`, `^x`, `null`…), conteo estimado y exacto, estructura, selección y copia de filas, inspector de celdas con JSON formateado.
+- **Edición de datos** segura: los cambios (celdas, filas nuevas, filas eliminadas) quedan pendientes, se revisa el SQL y se aplican todos juntos en una transacción, con control de cambios concurrentes.
+- **Editor SQL** con resaltado, autocompletado de tablas y columnas, historial, formato, Explicar/Analizar, límite de tiempo, cancelar y "Probar (ROLLBACK)".
+- **Exportar** tablas y consultas a CSV, JSON o SQL INSERT, en streaming.
+- **Seguridad pensada para producción**: solo lectura por defecto, escritura con confirmación y caducidad, aviso ante `DELETE`/`UPDATE` sin `WHERE`, `DROP` y `TRUNCATE`. Ver [docs/SEGURIDAD.md](docs/SEGURIDAD.md).
 - Tema claro, oscuro o automático.
 
 ## Requisitos
@@ -25,18 +25,31 @@ npm run tauri dev      # desarrollo
 npm run tauri build    # instalador
 ```
 
-Pruebas de interfaz: `npm test` (vitest con backend simulado).
-
-Pruebas del backend (los de integración están `#[ignore]` y necesitan un servidor real; solo leen, el de solo lectura comprueba que Postgres rechaza una escritura):
+## Pruebas
 
 ```
-cd src-tauri
-cargo test
-PGDESK_TEST_HOST=localhost PGDESK_TEST_PORT=5432 PGDESK_TEST_DB=db PGDESK_TEST_USER=u PGDESK_TEST_PASSWORD=p cargo test -- --include-ignored
+npm test                         # interfaz, con backend simulado
+cd src-tauri && cargo test       # unitarias del backend
 ```
+
+Las pruebas de integración del backend están marcadas `#[ignore]` y necesitan servidores reales. Las de lectura usan `PGDESK_TEST_HOST/PORT/DB/USER/PASSWORD`. Las de **escritura** usan `PGDESK_WRITE_TEST_*` y se niegan a correr si la base no se llama `scratch`: úsalas solo con un Postgres desechable. Las de TLS necesitan además `PGDESK_TLS_CA_PATH`.
+
+```
+cargo test -- --include-ignored
+```
+
+## Uso en producción
+
+Resumen (detalle en [docs/SEGURIDAD.md](docs/SEGURIDAD.md)):
+
+1. Conéctate con una cuenta de base de datos **sin permisos de escritura**: es la única barrera real.
+2. Elige "Cifrado y verificar el certificado".
+3. Marca la conexión como producción.
+4. Habilita la escritura solo cuando haga falta y revisa siempre el SQL antes de aplicar.
 
 ## Documentación
 
-- `docs/ROADMAP.md`: etapas y estado.
-- `docs/ARQUITECTURA.md`: estructura y decisiones.
-- Notas persistentes del proyecto: vault de Obsidian, `07 - Proyectos/pgdesk/`.
+- [docs/ROADMAP.md](docs/ROADMAP.md): hoja de ruta.
+- [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md): estructura y decisiones.
+- [docs/SEGURIDAD.md](docs/SEGURIDAD.md): revisión de seguridad.
+- [SECURITY.md](SECURITY.md): cómo informar vulnerabilidades.
