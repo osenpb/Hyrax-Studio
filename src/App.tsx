@@ -406,7 +406,7 @@ export default function App() {
       },
       {
         key: "sql",
-        label: "Nuevo editor SQL",
+        label: tr("Nuevo editor SQL"),
         detail: sqlTarget ? nameOf(sqlTarget) : tr("conéctate primero"),
         icon: <Icon name="terminal" size={14} />,
         disabled: !sqlTarget,
@@ -516,7 +516,7 @@ export default function App() {
           <div className="alert alert-ok banner">
             <Icon name="pin" size={15} />
             <span>{note}</span>
-            <button className="ghost icon-btn" onClick={() => setNote(null)} title="Cerrar">
+            <button className="ghost icon-btn" onClick={() => setNote(null)} title={tr("Cerrar")}>
               <Icon name="close" />
             </button>
           </div>
@@ -525,7 +525,7 @@ export default function App() {
           <div className="alert alert-error banner">
             <Icon name="alert" size={15} />
             <span>{banner}</span>
-            <button className="ghost icon-btn" onClick={() => setBanner(null)} title="Cerrar">
+            <button className="ghost icon-btn" onClick={() => setBanner(null)} title={tr("Cerrar")}>
               <Icon name="close" />
             </button>
           </div>
@@ -663,7 +663,7 @@ export default function App() {
           placeholder={tr("Escribe un comando…")}
           search={searchCommands}
           version={commands}
-          hint="Enter ejecuta · Esc cierra"
+          hint={tr("Enter ejecuta · Esc cierra")}
           onPick={(item) => {
             setPalette(null);
             commands.find((c) => c.key === item.key)?.run();
@@ -712,7 +712,7 @@ export default function App() {
               <span className="spacer" />
               <button onClick={() => setToDelete(null)}>{tr("Cancelar")}</button>
               <button className="danger" onClick={confirmDelete}>
-                Eliminar
+                {tr("Eliminar")}
               </button>
             </div>
           </div>

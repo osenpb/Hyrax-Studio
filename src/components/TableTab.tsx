@@ -519,7 +519,7 @@ export default function TableTab({
             >
               {PAGE_SIZES.map((s) => (
                 <option key={s} value={s}>
-                  {s} por página
+                  {t("{n} por página", { n: s })}
                 </option>
               ))}
             </select>

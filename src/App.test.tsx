@@ -2272,3 +2272,224 @@ describe("ajustes e idioma", () => {
     expect(screen.queryByRole("dialog", { name: "Ajustes" })).toBeNull();
   });
 });
+
+describe("interfaz en inglés", () => {
+  const SPANISH = /[áéíóúñ¿¡]/;
+  const noSpanish = (el: HTMLElement | Element) => {
+    const found = (el.textContent ?? "").match(/.{0,30}[áéíóúñ¿¡].{0,30}/g);
+    expect(found, "texto en español en la interfaz en inglés").toBeNull();
+    expect(SPANISH.test(el.textContent ?? "")).toBe(false);
+  };
+  const attrs = (root: ParentNode) =>
+    [...root.querySelectorAll("[title],[aria-label],[placeholder]")]
+      .flatMap((e) => [e.getAttribute("title"), e.getAttribute("aria-label"), e.getAttribute("placeholder")])
+      .filter((v): v is string => !!v);
+
+  it("la pantalla de inicio y la barra lateral salen en inglés, sin acentos del español", async () => {
+    setLang("en");
+    withMongoProfile = true;
+    render(<App />);
+    expect(await screen.findByText("Desktop database client")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New PostgreSQL connection" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New MongoDB connection" })).toBeTruthy();
+    expect(screen.getByText("Connections")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect to atlas_demo" })).toBeTruthy();
+    expect(screen.getByText(/New connections open in read-only mode\./)).toBeTruthy();
+    noSpanish(document.body);
+    expect(attrs(document.body).filter((a) => SPANISH.test(a))).toEqual([]);
+  });
+
+  it("el formulario de conexión de MongoDB sale en inglés", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "New MongoDB connection" }));
+    const dialog = await screen.findByRole("radiogroup", { name: "Engine" });
+    expect(dialog).toBeTruthy();
+    expect(screen.getByText("Use mongodb+srv (Atlas)")).toBeTruthy();
+    expect(screen.getByText("Authentication database")).toBeTruthy();
+    expect(screen.getByText("Database (optional)")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Test" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+    const modal = document.querySelector(".modal") as HTMLElement;
+    noSpanish(modal);
+    expect(attrs(modal).filter((a) => SPANISH.test(a))).toEqual([]);
+  });
+
+  it("el formulario de conexión de PostgreSQL con túnel SSH sale en inglés", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "New PostgreSQL connection" }));
+    await user.click(screen.getByLabelText(/Connect through an SSH tunnel/));
+    expect(screen.getByText("SSH host")).toBeTruthy();
+    expect(screen.getByText(/Press “Test” to see the server's fingerprint/)).toBeTruthy();
+    noSpanish(document.querySelector(".modal") as HTMLElement);
+  });
+
+  it("la colección de MongoDB sale en inglés: vistas, filtro, sugerencias y visor", async () => {
+    setLang("en");
+    localStorage.setItem("hyrax-mongo-view", "table");
+    localStorage.setItem("hyrax-mongo-viewer", "doc");
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    await screen.findByText("Ana");
+
+    const view = screen.getByRole("group", { name: "View" });
+    expect(within(view).getByRole("button", { name: "Documents" })).toBeTruthy();
+    expect(within(view).getByRole("button", { name: "Table" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Exact count" })).toBeTruthy();
+    expect(screen.getByText(/≈ 3 documents \(estimated\)/)).toBeTruthy();
+
+    // sugerencias
+    await user.type(screen.getByRole("textbox", { name: "Filter" }), "age");
+    const list = await screen.findByRole("listbox");
+    expect(list.textContent).toContain("greater than");
+    await user.keyboard("{Escape}");
+
+    // visor
+    const row = screen.getByText("Ana").closest("tr") as HTMLElement;
+    await user.click(within(row).getAllByRole("cell")[0]);
+    await user.click(await screen.findByRole("button", { name: "View document" }));
+    const viewer = await screen.findByRole("complementary", { name: "Document" });
+    expect(within(viewer).getByRole("button", { name: "Tree" })).toBeTruthy();
+    noSpanish(document.body);
+    expect(attrs(document.body).filter((a) => SPANISH.test(a))).toEqual([]);
+  });
+
+  it("una consulta de MongoDB mal escrita da el error en inglés", async () => {
+    setLang("en");
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    await screen.findByText("Ana");
+    await user.type(screen.getByRole("textbox", { name: "Filter" }), "this makes no sense{Enter}");
+    expect(await screen.findByText(/I do not understand “this makes no sense”/)).toBeTruthy();
+  });
+
+  it("los ajustes cambian el idioma de toda la aplicación sin recargar", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Connections");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await user.selectOptions(within(dialog).getByLabelText("Language"), "es");
+    // el diálogo y la pantalla de inicio de detrás cambian al instante
+    expect(await screen.findByRole("dialog", { name: "Ajustes" })).toBeTruthy();
+    expect(screen.getByText("Conexiones")).toBeTruthy();
+    expect(screen.getByText("Cliente de bases de datos de escritorio")).toBeTruthy();
+    expect(getLang()).toBe("es");
+  });
+
+  it("borrar los datos guardados pide ERASE en inglés y el backend lo recibe tal cual", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByRole("textbox", { name: "Commands" }), "erase saved");
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "Erase saved data" });
+    noSpanish(dialog);
+    const confirm = within(dialog).getByRole("button", { name: "Erase everything" }) as HTMLButtonElement;
+    const input = within(dialog).getByRole("textbox", { name: "Type ERASE to confirm" });
+    await user.type(input, "BORRAR");
+    expect(confirm.disabled).toBe(true); // la palabra es la del idioma actual
+    await user.clear(input);
+    await user.type(input, "ERASE");
+    expect(confirm.disabled).toBe(false);
+    await user.click(confirm);
+    await waitFor(() => expect(calls.find((c) => c.cmd === "reset_app_data")?.args).toEqual({ confirm: "ERASE" }));
+  });
+});
+
+describe("interfaz en inglés: PostgreSQL", () => {
+  const SPANISH = /[áéíóúñ¿¡]/;
+  const check = (label: string, root: ParentNode = document.body) => {
+    const text = (root as HTMLElement).textContent ?? "";
+    const found = text.match(/.{0,40}[áéíóúñ¿¡].{0,40}/g);
+    if (found) throw new Error(`${label}: texto en español → ${found.join(" || ")}`);
+    const attrs = [...root.querySelectorAll("[title],[aria-label],[placeholder]")]
+      .flatMap((e) => [e.getAttribute("title"), e.getAttribute("aria-label"), e.getAttribute("placeholder")])
+      .filter((v): v is string => !!v && SPANISH.test(v));
+    expect(attrs, `${label}: atributos en español`).toEqual([]);
+  };
+
+  it("la tabla, su estructura, el DDL, el editor SQL, la importación y el borrado salen en inglés", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await inSidebar().findByText("dev_erp"));
+    await screen.findByText("erp_db");
+    await user.click(await screen.findByText("erp_db"));
+    await user.click(await screen.findByText("orders"));
+    await user.dblClick(screen.getByText("orders"));
+    await screen.findByText("Exact count");
+    check("tabla");
+
+    await user.click(screen.getByText("Structure"));
+    await screen.findByText(/Foreign keys \(1\)/);
+    check("estructura");
+
+    await user.click(screen.getByText("DDL"));
+    await screen.findByText("Open in SQL editor");
+    check("DDL");
+
+    await user.click(screen.getByText("Data"));
+    await user.click(await screen.findByText("Import…"));
+    const importDialog = await screen.findByRole("dialog", { name: "Import data" });
+    check("importar", importDialog);
+    await user.click(within(importDialog).getByRole("button", { name: "Close" }));
+
+    await user.click(screen.getByRole("button", { name: /SQL$/ }));
+    await screen.findByText("Run all");
+    check("editor SQL");
+  });
+
+  it("el menú contextual y el diálogo de eliminar salen en inglés", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await inSidebar().findByText("dev_erp"));
+    await screen.findByText("erp_db");
+    await user.click(await screen.findByText("erp_db"));
+    fireEvent.contextMenu(await screen.findByText("orders"));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
+      "Open data",
+      "View DDL",
+      "New SELECT query",
+      "Copy name",
+      "Drop table…",
+    ]);
+    check("menú", menu);
+    await user.click(within(menu).getByRole("menuitem", { name: /Drop table/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
+    expect(within(dialog).getByText("Will run:")).toBeTruthy();
+    check("eliminar", dialog);
+  });
+
+  it("el chip de modo y la confirmación de escritura salen en inglés", async () => {
+    setLang("en");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await inSidebar().findByText("dev_erp"));
+    await screen.findByText("erp_db");
+    await user.click(await screen.findByText("erp_db"));
+    await user.dblClick(await screen.findByText("orders"));
+    await screen.findByText("Exact count");
+    await user.click(screen.getAllByRole("button", { name: /Read-only/ })[0]);
+    const dialog = document.querySelector(".modal") as HTMLElement;
+    expect(within(dialog).getByText(/You are about to allow writes on/)).toBeTruthy();
+    check("modo escritura", dialog);
+  });
+});

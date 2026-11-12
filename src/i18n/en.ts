@@ -548,4 +548,5 @@ export const en: Record<string, string> = {
   "TRUNCATE: vacía la tabla por completo": "TRUNCATE: empties the table completely",
   "DROP: elimina objetos de la base de datos": "DROP: removes objects from the database",
   "ALTER … DROP: elimina columnas o restricciones": "ALTER … DROP: removes columns or constraints",
+  "Enter ejecuta · Esc cierra": "Enter runs · Esc closes",
 };
