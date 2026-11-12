@@ -1940,6 +1940,27 @@ describe("MongoDB: explorar", () => {
     expect(inSidebar().queryByText("ventas")).toBeNull();
   });
 
+  it("PostgreSQL y MongoDB pueden estar conectados a la vez, cada uno con su árbol", async () => {
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    await inSidebar().findByText("erp_db");
+    await user.click(inSidebar().getByText("atlas_demo"));
+    await inSidebar().findByText("ventas");
+
+    // Los dos árboles siguen abiertos y cada motor usó sus propios comandos.
+    expect(inSidebar().getByText("erp_db")).toBeTruthy();
+    expect(inSidebar().getByText("ventas")).toBeTruthy();
+    expect(calls.some((c) => c.cmd === "connect_profile" && c.args.id === "p1")).toBe(true);
+    expect(calls.some((c) => c.cmd === "mongo_connect" && c.args.id === "m1")).toBe(true);
+
+    // Desconectar uno no cierra el otro.
+    await user.click(inSidebar().getAllByTitle("Desconectar")[1]);
+    await waitFor(() => expect(inSidebar().queryByText("ventas")).toBeNull());
+    expect(inSidebar().getByText("erp_db")).toBeTruthy();
+  });
+
   it("desconectar cierra el árbol de la conexión", async () => {
     withMongoProfile = true;
     const user = userEvent.setup();
