@@ -149,6 +149,7 @@ export const en: Record<string, string> = {
   "La página se cortó por tamaño (documentos muy grandes). Usa menos documentos por página o una proyección.": "The page was cut because of its size (very large documents). Use fewer documents per page or a projection.",
   "Hyrax solo lee en esta versión. MongoDB no tiene solo lectura por sesión: la protección real es un usuario con el rol read.": "Hyrax only reads in this version. MongoDB has no per-session read-only mode: the real protection is a user with the read role.",
   "Sin colecciones": "No collections",
+  "{a}–{b} de {n}": "{a}–{b} of {n}",
   "Mostrar bases del sistema ({n})": "Show system databases ({n})",
   "Ocultar bases del sistema": "Hide system databases",
   "Ver documentos": "View documents",

@@ -1896,6 +1896,7 @@ describe("MongoDB: explorar", () => {
       limit: 51,
     });
     expect(await screen.findByText(/≈ 3 documentos \(estimado\)/)).toBeTruthy();
+    expect(await screen.findByText("1–3 de ≈ 3")).toBeTruthy();
   });
 
   it("el filtro rápido se convierte en JSON, vuelve a la primera página y valida antes de enviar", async () => {

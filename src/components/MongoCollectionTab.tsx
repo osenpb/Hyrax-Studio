@@ -177,6 +177,18 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
           ? t("≈ {n} documentos (estimado)", { n: estimated.toLocaleString() })
           : t("total desconocido");
 
+  const knownTotal = exact ?? (!filtered ? estimated : null);
+  const rangeText =
+    docs.length === 0
+      ? "0"
+      : knownTotal !== null
+        ? t("{a}–{b} de {n}", {
+            a: (skip + 1).toLocaleString(),
+            b: (skip + docs.length).toLocaleString(),
+            n: (exact === null ? "≈ " : "") + knownTotal.toLocaleString(),
+          })
+        : `${(skip + 1).toLocaleString()}–${(skip + docs.length).toLocaleString()}`;
+
   const viewed = viewing !== null ? docs[viewing] : null;
   const copy = async (text: string, label: string) => {
     await copyText(text);
@@ -273,6 +285,40 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         </div>
       )}
 
+      <div className="mongo-results-bar">
+        <span className="muted">{total}</span>
+        <button className="small" onClick={() => void countExact()} disabled={counting}>
+          {counting ? t("Contando…") : t("Contar exacto")}
+        </button>
+        <span className="spacer" />
+        <select
+          aria-label={t("Documentos por página")}
+          value={pageSize}
+          onChange={(e) => {
+            setPageIndex(0);
+            setPageSize(Number(e.target.value));
+          }}
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {t("{n} por página", { n: s })}
+            </option>
+          ))}
+        </select>
+        <span className="mongo-range">{rangeText}</span>
+        <button
+          className="icon-btn"
+          title={t("Página anterior")}
+          disabled={pageIndex === 0 || loading}
+          onClick={() => setPageIndex(pageIndex - 1)}
+        >
+          <Icon name="prev" size={14} />
+        </button>
+        <button className="icon-btn" title={t("Página siguiente")} disabled={!hasNext || loading} onClick={() => setPageIndex(pageIndex + 1)}>
+          <Icon name="next" size={14} />
+        </button>
+      </div>
+
       <div className={"mongo-body" + (viewed ? " with-viewer" : "")}>
         <div className="grid-host">
           {!loading && !error && docs.length === 0 ? (
@@ -358,37 +404,6 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
       </div>
 
       <div className="statusbar">
-        <button
-          className="icon-btn"
-          title={t("Página anterior")}
-          disabled={pageIndex === 0 || loading}
-          onClick={() => setPageIndex(pageIndex - 1)}
-        >
-          <Icon name="prev" size={14} />
-        </button>
-        <button className="icon-btn" title={t("Página siguiente")} disabled={!hasNext || loading} onClick={() => setPageIndex(pageIndex + 1)}>
-          <Icon name="next" size={14} />
-        </button>
-        <select
-          aria-label={t("Documentos por página")}
-          value={pageSize}
-          onChange={(e) => {
-            setPageIndex(0);
-            setPageSize(Number(e.target.value));
-          }}
-        >
-          {PAGE_SIZES.map((s) => (
-            <option key={s} value={s}>
-              {t("{n} por página", { n: s })}
-            </option>
-          ))}
-        </select>
-        <span className="muted">
-          {docs.length > 0 ? `${(skip + 1).toLocaleString()}–${(skip + docs.length).toLocaleString()}` : "0"} · {total}
-        </span>
-        <button onClick={() => void countExact()} disabled={counting}>
-          {counting ? t("Contando…") : t("Contar exacto")}
-        </button>
         <span className="spacer" />
         {elapsed !== null && <span className="muted">{elapsed} ms</span>}
       </div>
