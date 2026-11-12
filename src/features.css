@@ -789,3 +789,103 @@ select.small {
   background: var(--ok-soft);
   color: var(--ok);
 }
+
+.mongo-query {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.mongo-query-row {
+  display: flex;
+  gap: 8px;
+}
+.mongo-query-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.mongo-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.mongo-body .grid-host {
+  flex: 1;
+  min-width: 0;
+}
+.doc-viewer {
+  display: flex;
+  flex-direction: column;
+  width: 42%;
+  min-width: 280px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+.doc-viewer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-viewer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: var(--mono-weight);
+}
+.jt-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 20px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.jt-toggle {
+  cursor: pointer;
+  align-items: center;
+}
+.jt-toggle:hover {
+  background: var(--surface-hover);
+}
+.jt-key {
+  color: var(--text);
+}
+.jt-colon {
+  color: var(--muted);
+  margin-left: -4px;
+}
+.jt-summary {
+  color: var(--muted);
+}
+.jt-string {
+  color: var(--tok-string);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.jt-num {
+  color: var(--tok-number);
+}
+.jt-bool {
+  color: var(--tok-keyword);
+}
+.jt-null {
+  color: var(--muted);
+}
+.jt-special {
+  color: var(--tok-type);
+}
+.jt-badge {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-family: var(--font);
+  font-size: 10px;
+  line-height: 15px;
+  background: var(--surface-3);
+  color: var(--text-soft);
+}

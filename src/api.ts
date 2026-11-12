@@ -267,7 +267,50 @@ export interface FileContent {
   content: string;
 }
 
+export interface MongoDatabase {
+  name: string;
+  sizeOnDisk: number | null;
+  empty: boolean;
+}
+
+export interface MongoCollection {
+  name: string;
+  kind: "collection" | "view" | "timeseries";
+}
+
+export interface MongoPage {
+  /** Cada documento como JSON extendido canónico. */
+  documents: string[];
+  truncated: boolean;
+  elapsedMs: number;
+}
+
+export interface MongoConnectInfo {
+  version: string;
+  readOnly: boolean;
+}
+
 export const api = {
+  mongoConnect: (id: string) => invoke<MongoConnectInfo>("mongo_connect", { id }),
+  mongoDisconnect: (id: string) => invoke<void>("mongo_disconnect", { id }),
+  mongoListDatabases: (id: string) => invoke<MongoDatabase[]>("mongo_list_databases", { id }),
+  mongoListCollections: (id: string, database: string) =>
+    invoke<MongoCollection[]>("mongo_list_collections", { id, database }),
+  mongoFind: (
+    id: string,
+    database: string,
+    collection: string,
+    filter: string,
+    sort: string,
+    projection: string,
+    skip: number,
+    limit: number,
+    timeoutMs = 0,
+  ) => invoke<MongoPage>("mongo_find", { id, database, collection, filter, sort, projection, skip, limit, timeoutMs }),
+  mongoCount: (id: string, database: string, collection: string, filter: string, timeoutMs = 0) =>
+    invoke<number>("mongo_count", { id, database, collection, filter, timeoutMs }),
+  mongoEstimatedCount: (id: string, database: string, collection: string) =>
+    invoke<number>("mongo_estimated_count", { id, database, collection }),
   dropObject: (id: string, schema: string, name: string, kind: RelationKind, cascade: boolean, confirm: string) =>
     invoke<string>("drop_object", { id, schema, name, kind, cascade, confirm }),
   dropDatabase: (id: string, database: string, force: boolean, confirm: string) =>
