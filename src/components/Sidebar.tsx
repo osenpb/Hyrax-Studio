@@ -16,6 +16,7 @@ import {
 import Icon, { type IconName } from "./Icon";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
 import { ActionButton, Row } from "./TreeRow";
+import MongoNode from "./MongoNode";
 import DropDialog, { type DropRequest } from "./DropDialog";
 import { copyText } from "../clipboard";
 import { databaseOfSession } from "../api";
@@ -60,6 +61,10 @@ interface Props {
   onDatabaseDropped: (profileId: string, database: string) => void;
   /** La pantalla de inicio pide abrir una conexión (n cambia en cada petición). */
   openRequest?: { id: string; n: number } | null;
+  /** Conexiones de MongoDB con la sesión abierta (por id de conexión). */
+  mongoConnected?: Record<string, boolean>;
+  onMongoConnect: (profileId: string) => Promise<boolean>;
+  onOpenCollection: (profileId: string, database: string, collection: string, kind: "collection" | "view" | "timeseries") => void;
 }
 
 interface ConnCache {
@@ -287,7 +292,8 @@ export default function Sidebar(props: Props) {
     const request = props.openRequest;
     if (!request) return;
     const profile = props.profiles.find((p) => p.id === request.id);
-    if (profile) void clickConnection(profile);
+    // Las conexiones de MongoDB atienden la petición en su propio nodo.
+    if (profile && profile.engine !== "mongodb") void clickConnection(profile);
     // Solo debe reaccionar a una petición nueva, no a cada cambio de perfiles o sesiones.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequestN]);
@@ -480,6 +486,21 @@ export default function Sidebar(props: Props) {
           </div>
         )}
         {profiles.map((profile) => {
+          if (profile.engine === "mongodb") {
+            return (
+              <MongoNode
+                key={profile.id}
+                profile={profile}
+                connected={!!props.mongoConnected?.[profile.id]}
+                onConnect={props.onMongoConnect}
+                onDisconnect={props.onDisconnect}
+                onEdit={props.onEdit}
+                onDelete={props.onDelete}
+                onOpenCollection={props.onOpenCollection}
+                openRequestN={props.openRequest?.id === profile.id ? props.openRequest.n : undefined}
+              />
+            );
+          }
           const id = profile.id;
           const isConnected = hasSession(id);
           const initial = sessionKey(id, profile.database);
@@ -498,13 +519,7 @@ export default function Sidebar(props: Props) {
                 label={busy.has(id) ? `${profile.name} — conectando…` : profile.name}
                 icon="server"
                 iconClass={isConnected ? "ic-on" : "ic-off"}
-                tag={
-                  profile.production
-                    ? { text: "PROD", tone: "danger" }
-                    : profile.engine === "mongodb"
-                      ? { text: "Mongo", tone: "info" }
-                      : undefined
-                }
+                tag={profile.production ? { text: "PROD", tone: "danger" } : undefined}
                 expandable={isConnected}
                 expanded={open}
                 title={`${profile.host}:${profile.port}`}

@@ -17,6 +17,8 @@ let importError: string | null = null;
 let dropError: string | null = null;
 let profilesCleared = false;
 let withMongoProfile = false;
+let mongoConnectError = "";
+let mongoFindError = "";
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -115,8 +117,32 @@ vi.mock("@tauri-apps/api/core", () => ({
         }
         return list;
       }
+      case "mongo_connect":
+        if (mongoConnectError) throw mongoConnectError;
+        return { version: "MongoDB 8.0.6", readOnly: true };
+      case "mongo_list_databases":
+        return [{ name: "ventas", sizeOnDisk: 20480, empty: false }];
+      case "mongo_list_collections":
+        return [
+          { name: "open_orders", kind: "view" },
+          { name: "orders", kind: "collection" },
+        ];
+      case "mongo_find":
+        if (mongoFindError) throw mongoFindError;
+        return {
+          documents: [
+            '{"_id":{"$oid":"507f1f77bcf86cd799439011"},"name":"Ana","age":{"$numberInt":"30"},"addr":{"city":"Lima"}}',
+            '{"_id":{"$oid":"507f1f77bcf86cd799439012"},"name":"Beto","age":{"$numberInt":"41"}}',
+            '{"_id":{"$oid":"507f1f77bcf86cd799439013"},"name":"Cora","age":{"$numberInt":"25"}}',
+          ],
+          truncated: false,
+          elapsedMs: 3,
+        };
+      case "mongo_estimated_count":
+        return 3;
+      case "mongo_count":
+        return 2;
       case "connect_profile":
-        if (args.id === "m1") throw "El explorador de MongoDB llega en la fase M1.";
         return { version: "PostgreSQL 16", readOnly: readOnlyState };
       case "set_read_only":
         readOnlyState = args.enabled as boolean;
@@ -257,6 +283,8 @@ Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
 beforeEach(() => {
   profilesCleared = false;
   withMongoProfile = false;
+  mongoConnectError = "";
+  mongoFindError = "";
   localStorage.removeItem("hyrax-recent");
   calls.length = 0;
   failDatabases = false;
@@ -1774,14 +1802,6 @@ describe("pantalla de inicio", () => {
     expect(JSON.parse(localStorage.getItem("hyrax-recent") ?? "[]")).toEqual(["p1"]);
   });
 
-  it("una conexión de MongoDB avisa de que el explorador llega en M1", async () => {
-    withMongoProfile = true;
-    const user = userEvent.setup();
-    render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
-    expect(await screen.findByText(/No se pudo conectar: El explorador de MongoDB llega en la fase M1/)).toBeTruthy();
-  });
-
   it("las recientes van primero", async () => {
     withMongoProfile = true;
     localStorage.setItem("hyrax-recent", JSON.stringify(["m1"]));
@@ -1789,5 +1809,145 @@ describe("pantalla de inicio", () => {
     await screen.findByRole("button", { name: /Conectar con dev_erp/ });
     const names = screen.getAllByRole("button", { name: /^Conectar con / }).map((b) => b.getAttribute("title"));
     expect(names).toEqual(["Conectar con atlas_demo", "Conectar con dev_erp"]);
+  });
+});
+
+describe("MongoDB: explorar", () => {
+  const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    await screen.findByText("Ana");
+  };
+
+  it("conectar desde el inicio abre la sesión y lista bases y colecciones", async () => {
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+
+    expect(await inSidebar().findByText("ventas")).toBeTruthy();
+    expect(calls.some((c) => c.cmd === "mongo_connect" && c.args.id === "m1")).toBe(true);
+    expect(calls.some((c) => c.cmd === "connect_profile")).toBe(false);
+    expect(JSON.parse(localStorage.getItem("hyrax-recent") ?? "[]")).toEqual(["m1"]);
+
+    await user.click(inSidebar().getByText("ventas"));
+    expect(await inSidebar().findByText("orders")).toBeTruthy();
+    expect(inSidebar().getByText("open_orders")).toBeTruthy();
+    expect(calls.find((c) => c.cmd === "mongo_list_collections")?.args).toEqual({ id: "m1", database: "ventas" });
+  });
+
+  it("abrir una colección muestra sus documentos con los tipos resumidos y pide la primera página", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+
+    expect(screen.getByText("507f1f77bcf86cd799439011")).toBeTruthy(); // ObjectId como texto
+    expect(screen.getByText("Beto")).toBeTruthy();
+    expect(screen.getByText("41")).toBeTruthy(); // Int32 sin el envoltorio
+    expect(screen.getByText('{ city: "Lima" }')).toBeTruthy();
+    const find = calls.filter((c) => c.cmd === "mongo_find").pop();
+    expect(find?.args).toMatchObject({
+      id: "m1",
+      database: "ventas",
+      collection: "orders",
+      filter: "",
+      sort: "",
+      projection: "",
+      skip: 0,
+      limit: 51,
+    });
+    expect(await screen.findByText(/≈ 3 documentos \(estimado\)/)).toBeTruthy();
+  });
+
+  it("el filtro rápido se convierte en JSON, vuelve a la primera página y valida antes de enviar", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    const before = calls.filter((c) => c.cmd === "mongo_find").length;
+
+    await user.type(screen.getByRole("textbox", { name: "Filtro" }), "age>30 name~be{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.cmd === "mongo_find").length).toBe(before + 1));
+    const sent = calls.filter((c) => c.cmd === "mongo_find").pop();
+    expect(JSON.parse(String(sent?.args.filter))).toEqual({ age: { $gt: 30 }, name: { $regex: "be", $options: "i" } });
+
+    await user.clear(screen.getByRole("textbox", { name: "Filtro" }));
+    await user.type(screen.getByRole("textbox", { name: "Filtro" }), "esto no se entiende{Enter}");
+    expect(await screen.findByText(/No entiendo/)).toBeTruthy();
+    expect(calls.filter((c) => c.cmd === "mongo_find").length).toBe(before + 1); // no se envió nada
+  });
+
+  it("orden y campos se envían como JSON", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    await user.click(screen.getByRole("button", { name: "Orden y campos" }));
+    await user.type(screen.getByRole("textbox", { name: "Orden" }), "-age");
+    await user.type(screen.getByRole("textbox", { name: "Campos" }), "name -_id");
+    await user.click(screen.getByRole("button", { name: "Buscar" }));
+    await waitFor(() => {
+      const sent = calls.filter((c) => c.cmd === "mongo_find").pop();
+      expect(sent?.args.sort).toBe('{"age":-1}');
+      expect(sent?.args.projection).toBe('{"name":1,"_id":0}');
+    });
+  });
+
+  it("el visor de documento muestra el árbol con los tipos BSON", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    const row = screen.getByText("Ana").closest("tr") as HTMLElement;
+    await user.click(within(row).getAllByRole("cell")[0]); // número de fila: selecciona la fila
+    await user.click(await screen.findByRole("button", { name: "Ver documento" }));
+
+    const viewer = await screen.findByRole("complementary", { name: "Documento" });
+    expect(within(viewer).getByText("ObjectId")).toBeTruthy();
+    expect(within(viewer).getAllByText("int").length).toBeGreaterThan(0);
+    expect(within(viewer).getByText('"Ana"')).toBeTruthy();
+    expect(within(viewer).getByText("addr")).toBeTruthy();
+    expect(within(viewer).getByText('"Lima"')).toBeTruthy();
+  });
+
+  it("Contar exacto usa el filtro aplicado", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    await user.type(screen.getByRole("textbox", { name: "Filtro" }), "age>20{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Contar exacto" }));
+    expect(await screen.findByText(/2 documentos con el filtro/)).toBeTruthy();
+    expect(calls.filter((c) => c.cmd === "mongo_count").pop()?.args).toMatchObject({
+      id: "m1",
+      collection: "orders",
+      filter: '{"age":{"$gt":20}}',
+    });
+  });
+
+  it("un error del servidor se muestra en la pestaña", async () => {
+    mongoFindError = "MongoDB: Operation exceeded time limit";
+    const user = userEvent.setup();
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    expect(await screen.findByText(/Operation exceeded time limit/)).toBeTruthy();
+  });
+
+  it("si falla la conexión muestra el aviso y no abre el árbol", async () => {
+    mongoConnectError = "No se pudo conectar con MongoDB: Server selection timeout";
+    const user = userEvent.setup();
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    expect(await screen.findByText(/No se pudo conectar: .*Server selection timeout/)).toBeTruthy();
+    expect(inSidebar().queryByText("ventas")).toBeNull();
+  });
+
+  it("desconectar cierra el árbol de la conexión", async () => {
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await inSidebar().findByText("ventas");
+    await user.click(inSidebar().getByTitle("Desconectar"));
+    await waitFor(() => expect(inSidebar().queryByText("ventas")).toBeNull());
+    expect(calls.some((c) => c.cmd === "disconnect_profile" && c.args.id === "m1")).toBe(true);
   });
 });

@@ -1,0 +1,181 @@
+import { useEffect, useRef, useState } from "react";
+import { api, errorText, type ConnectionProfile, type MongoCollection, type MongoDatabase } from "../api";
+import { ActionButton, Row } from "./TreeRow";
+
+interface Props {
+  profile: ConnectionProfile;
+  connected: boolean;
+  /** Abre la sesión; devuelve false si falló (el aviso lo muestra quien llama). */
+  onConnect: (profileId: string) => Promise<boolean>;
+  onDisconnect: (profileId: string) => void;
+  onEdit: (profile: ConnectionProfile) => void;
+  onDelete: (profile: ConnectionProfile) => void;
+  onOpenCollection: (profileId: string, database: string, collection: string, kind: MongoCollection["kind"]) => void;
+  /** La pantalla de inicio pide abrir esta conexión (n cambia en cada petición). */
+  openRequestN?: number;
+}
+
+function formatSize(bytes: number | null): string | undefined {
+  if (bytes === null || bytes <= 0) return undefined;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let n = bytes;
+  let u = 0;
+  while (n >= 1024 && u < units.length - 1) {
+    n /= 1024;
+    u++;
+  }
+  return `${n >= 10 || u === 0 ? Math.round(n) : n.toFixed(1)} ${units[u]}`;
+}
+
+/** Una conexión de MongoDB en el árbol: servidor → bases de datos → colecciones. */
+export default function MongoNode(props: Props) {
+  const { profile, connected } = props;
+  const id = profile.id;
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [databases, setDatabases] = useState<MongoDatabase[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openDbs, setOpenDbs] = useState<Set<string>>(new Set());
+  const [collections, setCollections] = useState<Record<string, MongoCollection[] | { error: string }>>({});
+
+  const loadDatabases = async () => {
+    setError(null);
+    try {
+      setDatabases(await api.mongoListDatabases(id));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
+  const loadCollections = async (database: string) => {
+    try {
+      const list = await api.mongoListCollections(id, database);
+      setCollections((prev) => ({ ...prev, [database]: list }));
+    } catch (e) {
+      setCollections((prev) => ({ ...prev, [database]: { error: errorText(e) } }));
+    }
+  };
+
+  const clickServer = async () => {
+    if (busy) return;
+    if (connected) {
+      const opening = !open;
+      setOpen(opening);
+      if (opening && !databases) await loadDatabases();
+      return;
+    }
+    setBusy(true);
+    try {
+      if (await props.onConnect(id)) {
+        setOpen(true);
+        await loadDatabases();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clickDatabase = async (name: string) => {
+    const opening = !openDbs.has(name);
+    setOpenDbs((prev) => {
+      const next = new Set(prev);
+      if (opening) next.add(name);
+      else next.delete(name);
+      return next;
+    });
+    if (opening && !collections[name]) await loadCollections(name);
+  };
+
+  // Si la sesión se cierra desde fuera (editar o desconectar), el árbol se vacía.
+  useEffect(() => {
+    if (!connected) {
+      setOpen(false);
+      setDatabases(null);
+      setError(null);
+      setOpenDbs(new Set());
+      setCollections({});
+    }
+  }, [connected]);
+
+  // La pantalla de inicio pide abrir la conexión: solo reacciona a una petición nueva.
+  const lastRequest = useRef<number | undefined>(props.openRequestN);
+  useEffect(() => {
+    if (props.openRequestN !== undefined && props.openRequestN !== lastRequest.current) {
+      lastRequest.current = props.openRequestN;
+      void clickServer();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openRequestN]);
+
+  return (
+    <div>
+      <Row
+        depth={0}
+        label={busy ? `${profile.name} — conectando…` : profile.name}
+        icon="server"
+        iconClass={connected ? "ic-on" : "ic-off"}
+        tag={profile.production ? { text: "PROD", tone: "danger" } : { text: "Mongo", tone: "info" }}
+        expandable={connected}
+        expanded={open}
+        title={`${profile.mongo?.srv ? "mongodb+srv://" : ""}${profile.host}${profile.mongo?.srv ? "" : ":" + profile.port}`}
+        onClick={() => void clickServer()}
+        actions={
+          <>
+            {connected && (
+              <>
+                <ActionButton title="Recargar bases de datos" icon="refresh" onClick={() => void loadDatabases()} />
+                <ActionButton title="Desconectar" icon="power" onClick={() => props.onDisconnect(id)} />
+              </>
+            )}
+            <ActionButton title="Editar" icon="edit" onClick={() => props.onEdit(profile)} />
+            <ActionButton title="Eliminar" icon="trash" danger onClick={() => props.onDelete(profile)} />
+          </>
+        }
+      />
+      {open && error && <div className="tree-error">{error}</div>}
+      {open && !databases && !error && <Row depth={1} label="Cargando…" muted />}
+      {open &&
+        databases?.map((db) => {
+          const dbOpen = openDbs.has(db.name);
+          const list = collections[db.name];
+          return (
+            <div key={db.name}>
+              <Row
+                depth={1}
+                label={db.name}
+                icon="database"
+                iconClass="ic-db"
+                tag={formatSize(db.sizeOnDisk) ? { text: formatSize(db.sizeOnDisk)!, tone: "info" } : undefined}
+                expandable
+                expanded={dbOpen}
+                onClick={() => void clickDatabase(db.name)}
+              />
+              {dbOpen && !list && <Row depth={2} label="Cargando…" muted />}
+              {dbOpen && list && "error" in list && <div className="tree-error">{list.error}</div>}
+              {dbOpen && Array.isArray(list) && list.length === 0 && <Row depth={2} label="Sin colecciones" muted />}
+              {dbOpen &&
+                Array.isArray(list) &&
+                list.map((c) => (
+                  <Row
+                    key={c.name}
+                    depth={2}
+                    label={c.name}
+                    icon={c.kind === "view" ? "view" : "table"}
+                    iconClass={c.kind === "view" ? "ic-view" : "ic-table"}
+                    title={c.kind === "collection" ? "Doble clic para ver los documentos" : `${c.kind} · doble clic para verlo`}
+                    onDoubleClick={() => props.onOpenCollection(id, db.name, c.name, c.kind)}
+                    actions={
+                      <ActionButton
+                        title="Ver documentos"
+                        icon="open"
+                        onClick={() => props.onOpenCollection(id, db.name, c.name, c.kind)}
+                      />
+                    }
+                  />
+                ))}
+            </div>
+          );
+        })}
+    </div>
+  );
+}

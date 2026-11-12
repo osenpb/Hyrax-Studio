@@ -8,6 +8,7 @@ import {
   type ColumnFilter,
   type ConnectionProfile,
   type Engine,
+  type MongoConnectInfo,
   type ObjectKind,
   type ObjectRef,
   type ResultSet,
@@ -22,6 +23,7 @@ import Palette, { type PaletteItem } from "./components/Palette";
 import CompareDialog, { type Pin } from "./components/CompareDialog";
 import ResetDialog from "./components/ResetDialog";
 import StartScreen from "./components/StartScreen";
+import MongoCollectionTab from "./components/MongoCollectionTab";
 import { markRecent } from "./recent";
 import Icon, { type IconName } from "./components/Icon";
 import { clearHistory } from "./history";
@@ -29,7 +31,7 @@ import { rank } from "./fuzzy";
 
 interface Tab {
   id: string;
-  kind: "table" | "sql" | "ddl";
+  kind: "table" | "sql" | "ddl" | "collection";
   connId: string;
   title: string;
   schema?: string;
@@ -37,6 +39,9 @@ interface Tab {
   filters?: ColumnFilter[];
   ddl?: { kind: ObjectKind; oid: number | null };
   initialSql?: string;
+  /** Pestañas de colección de MongoDB. */
+  database?: string;
+  collection?: string;
 }
 
 const MAX_PINS = 8;
@@ -81,6 +86,7 @@ export default function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ profile: ConnectionProfile | null; engine?: Engine } | null>(null);
+  const [mongoConnected, setMongoConnected] = useState<Record<string, MongoConnectInfo>>({});
   const [openRequest, setOpenRequest] = useState<{ id: string; n: number } | null>(null);
   const [toDelete, setToDelete] = useState<ConnectionProfile | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -141,6 +147,29 @@ export default function App() {
     }
   };
 
+  const connectMongo = async (profileId: string) => {
+    setBanner(null);
+    try {
+      const info = await api.mongoConnect(profileId);
+      setMongoConnected((prev) => ({ ...prev, [profileId]: info }));
+      markRecent(profileId);
+      return true;
+    } catch (e) {
+      setBanner(`No se pudo conectar: ${errorText(e)}`);
+      return false;
+    }
+  };
+
+  const openCollection = (profileId: string, database: string, collection: string) => {
+    const id = `m:${profileId}:${database}.${collection}`;
+    setTabs((prev) =>
+      prev.some((t) => t.id === id)
+        ? prev
+        : [...prev, { id, kind: "collection", connId: profileId, database, collection, title: collection }],
+    );
+    setActiveTab(id);
+  };
+
   const changeReadOnly = async (key: string, enabled: boolean, confirm?: string) => {
     const readOnly = await api.setReadOnly(key, enabled, confirm);
     setConnected((prev) => (key in prev ? { ...prev, [key]: { ...prev[key], readOnly } } : prev));
@@ -185,10 +214,12 @@ export default function App() {
     setActiveTab((cur) => (cur && closing.has(cur) ? null : cur));
   };
 
-  const forgetSessions = (profileId: string) =>
+  const forgetSessions = (profileId: string) => {
     setConnected((prev) =>
       Object.fromEntries(Object.entries(prev).filter(([key]) => profileOfSession(key) !== profileId)),
     );
+    setMongoConnected((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => key !== profileId)));
+  };
 
   const disconnect = async (profileId: string) => {
     await api.disconnectProfile(profileId).catch(() => undefined);
@@ -441,6 +472,9 @@ export default function App() {
         onDisconnect={disconnect}
         onNew={() => setDialog({ profile: null })}
         openRequest={openRequest}
+        mongoConnected={Object.fromEntries(Object.keys(mongoConnected).map((k) => [k, true]))}
+        onMongoConnect={connectMongo}
+        onOpenCollection={openCollection}
         onEdit={(profile) => setDialog({ profile })}
         onDelete={setToDelete}
         onOpenSql={(connId, sql) => openSql(connId, sql)}
@@ -490,7 +524,13 @@ export default function App() {
               key={t.id}
               className={"tab" + (t.id === activeTab ? " active" : "") + (isProduction(t.connId) ? " prod" : "")}
               onClick={() => setActiveTab(t.id)}
-              title={t.kind === "table" ? `${nameOf(t.connId)} · ${t.schema}.${t.table}` : nameOf(t.connId)}
+              title={
+                t.kind === "collection"
+                  ? `${profiles.find((p) => p.id === t.connId)?.name ?? ""} · ${t.database}.${t.collection}`
+                  : t.kind === "table"
+                    ? `${nameOf(t.connId)} · ${t.schema}.${t.table}`
+                    : nameOf(t.connId)
+              }
             >
               <Icon
                 name={t.kind === "sql" ? "terminal" : t.kind === "ddl" ? "code" : "table"}
@@ -535,7 +575,14 @@ export default function App() {
           )}
           {tabs.map((t) => (
             <div key={t.id} className="tab-pane" hidden={t.id !== activeTab}>
-              {t.kind === "table" ? (
+              {t.kind === "collection" ? (
+                <MongoCollectionTab
+                  profileId={t.connId}
+                  database={t.database!}
+                  collection={t.collection!}
+                  production={isProduction(t.connId)}
+                />
+              ) : t.kind === "table" ? (
                 <TableTab
                   connId={t.connId}
                   schema={t.schema!}
