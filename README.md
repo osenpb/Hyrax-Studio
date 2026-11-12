@@ -46,7 +46,7 @@ DataGrip and DBeaver do a lot, sometimes too much, and they are heavy. Hyrax Stu
 
 **Connect**
 - A start screen with your saved connections (engine badge, production mark, most recently used first) and a "New connection" button per engine.
-- Saved connections, with pasting of `postgresql://user:password@host:5432/db?sslmode=…`, `mongodb://…` or `mongodb+srv://…` strings (the engine is detected from the scheme).
+- Saved connections, with pasting of `postgresql://user:password@host:5432/db?sslmode=…`, or `mongodb://…` strings (the engine is detected from the scheme).
 - **SSH tunnel** with a private key or a password. The SSH server's host key is never accepted blindly: the first time its SHA-256 fingerprint is shown for you to confirm, it is pinned to the connection, and if it ever changes Hyrax refuses to connect.
 
 **Safety**
@@ -91,7 +91,7 @@ What you should know before trusting Hyrax:
 - ER diagrams, schema comparison, session monitor, role and privilege management.
 - Dropping schemas; "Go to object" does not list indexes, constraints or triggers as entries of their own.
 - Context-aware keyword autocomplete, a scripts panel and custom snippets.
-- **MongoDB** is read-only for now: you can connect (local, Atlas `mongodb+srv`, replica sets, TLS with a custom CA), browse databases and collections, filter, sort and page through documents, and inspect each one with its BSON types. There is no query console, `explain`, index view, export or writing yet ([plan](docs/MONGODB.md)). MongoDB has no per-session read-only mode, so use a user with the `read` role. A company server with a private CA needs its CA as a PEM file (MongoDB uses its own certificate roots, not the Windows store).
+- **MongoDB** is read-only for now: you can connect (local or company servers, replica sets, TLS with a custom CA), browse databases and collections, filter, sort and page through documents, and inspect each one with its BSON types. There is no query console, `explain`, index view, export or writing yet ([plan](docs/MONGODB.md)). MongoDB has no per-session read-only mode, so use a user with the `read` role. A company server with a private CA needs its CA as a PEM file (MongoDB uses its own certificate roots, not the Windows store).
 
 The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 

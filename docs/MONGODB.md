@@ -10,7 +10,7 @@ Goal: Hyrax Studio can connect to MongoDB and cover the everyday essentials (bro
 |---|---|---|
 | 1 | Console style | **JSON (Find / Aggregate) first**, no `db.col.find()` syntax yet — *as long as the UI is comfortable to use*. That makes comfort a requirement, not an extra: field autocomplete from sampling, ready-made templates, formatting and validation as you type, a quick filter bar on the collection view (so simple filters need no JSON at all), and "copy as mongosh". |
 | 2 | Writes | **Exploration first.** M1 and M2 are read-only; writing arrives in M3. |
-| 3 | Real MongoDB targets | **Local, Atlas and a company server.** So `mongodb+srv://`, TLS and a custom CA file are part of M1, not a later phase. The SSH tunnel stays optional (Atlas does not need it). |
+| 3 | Real MongoDB targets | **Local and company servers.** Cloud-hosted clusters (Atlas, `mongodb+srv://`) are out of scope. TLS and a custom CA file are part of M1, not a later phase. The SSH tunnel stays optional. |
 | 4 | Start screen | **Whatever performs best**: a plain, lightweight list of saved connections (engine badge, production mark), no heavy cards or images, rendered lazily. The engine choice lives in the "New connection" dialog. |
 | 5 | Vocabulary | **MongoDB's own terms** in the MongoDB views: collection, document, field, aggregation pipeline, index. |
 
@@ -19,7 +19,7 @@ Goal: Hyrax Studio can connect to MongoDB and cover the everyday essentials (bro
 Today, with no tabs open, a fixed welcome is shown. It becomes a **start menu**, kept deliberately simple and fast:
 
 - A list of **saved connections** with an engine badge (PG / Mongo), the production mark and the last time it was used, plus a **New connection** button that first asks for the engine.
-- Pasting a connection string (`postgresql://…`, `mongodb://…`, `mongodb+srv://…`) anywhere on the screen creates the connection and deduces the engine from the scheme.
+- Pasting a connection string (`postgresql://…`, `mongodb://…`) anywhere on the screen creates the connection and deduces the engine from the scheme.
 - Quick actions: open a script, shortcuts.
 - The tree on the left stays the main navigation; the start screen only shows when there are no tabs.
 
@@ -29,7 +29,7 @@ What it implies: the connection profile gains an `engine` field (`postgres` by d
 
 | Priority | Feature | Notes |
 |---|---|---|
-| Must | Connect (host/port or `mongodb+srv`, user, auth database, TLS with an optional CA file) | Password in the system store, like PG |
+| Must | Connect (host/port, user, auth database, TLS with an optional CA file) | Password in the system store, like PG |
 | Must | Tree: server → databases → collections (and views) | With estimated count and size |
 | Must | Browse a collection's documents: pagination, filter, sort, projection | Quick filter bar plus JSON filter; grid with top-level fields and a full document viewer |
 | Must | Document viewer: JSON tree with BSON types visible (ObjectId, Date, Decimal128, Binary…) | Extended JSON is shown, types are not lost |
@@ -61,15 +61,15 @@ What it implies: the connection profile gains an `engine` field (`postgres` by d
 - Values travel to the UI as **Extended JSON** (relaxed for display, canonical for editing), so types like `Decimal128`, `Long` or `ObjectId` are not lost.
 
 **Driver spike (done 2026-11-11, dependency now in use):**
-- `mongodb 3` with `default-features = false` and `features = ["compat-3-3-0", "rustls-tls", "dns-resolver", "bson-3"]` **compiles on Windows** with no extra tools: it uses `rustls` with `ring`, and `aws-lc-sys` (which would need CMake and NASM) is not in the dependency tree. `dns-resolver` brings the SRV lookups Atlas needs.
+- `mongodb 3` with `default-features = false` and `features = ["compat-3-3-0", "rustls-tls", "bson-3"]` **compiles on Windows** with no extra tools: it uses `rustls` with `ring`, and `aws-lc-sys` (which would need CMake and NASM) is not in the dependency tree. SRV lookups (`dns-resolver`) are not enabled, because `mongodb+srv://` is not supported.
 - The driver requires `compat-3-3-0` to be enabled explicitly.
-- **Two TLS stacks:** PostgreSQL uses `native-tls` (the Windows store), MongoDB would use `rustls`. `rustls-tls` ships bundled public roots (`webpki-roots`) and does **not** read the Windows certificate store, so a company server with a private CA needs its CA given as a PEM file (the same "custom CA" field PG already has). Atlas works with the bundled roots.
+- **Two TLS stacks:** PostgreSQL uses `native-tls` (the Windows store), MongoDB would use `rustls`. `rustls-tls` ships bundled public roots (`webpki-roots`) and does **not** read the Windows certificate store, so a company server with a private CA needs its CA given as a PEM file (the same "custom CA" field PG already has).
 - **Binary size (release, measured):** 6.83 MB → 9.03 MB (+2.2 MB, +32%) with the driver linked and used. Accepted.
 - **`cargo audit`:** the new dependencies add **no new notices**; the two that appear (`crypto-bigint`, `rsa`) come from `russh` and are unchanged.
 - The release build with the driver took about 16 minutes on the development machine (single codegen unit + LTO), and a debug build with incremental compilation filled the disk (24 GB of cache): builds are now run with `CARGO_INCREMENTAL=0`.
 
 ### 4.2 Code architecture
-- Profile: `engine: postgres | mongodb`, and for Mongo its own fields (hosts, `srv`, auth database, replica set, TLS, read preference). The URI is built when connecting; **the password is never part of the stored URI**.
+- Profile: `engine: postgres | mongodb`, and for Mongo its own fields (hosts, auth database, replica set, TLS, read preference). The URI is built when connecting; **the password is never part of the stored URI**.
 - Backend: folder `src-tauri/src/mongo/` with `session`, `browse`, `schema`, `edit`, `import_export`. Commands prefixed `mongo_` so the PostgreSQL ones are untouched. No shared abstraction is forced ahead of time: only what really coincides (profiles, sessions, errors, limits) is extracted once there are two implementations.
 - Sessions: one connection per profile (the driver already pools); the session key includes the engine so they are not mixed with PG's.
 - UI: `Tab` gains kinds `collection`, `mongo-query` and `indexes`; the sidebar tree is fed per engine. SQL components must not know about Mongo and vice versa.
@@ -103,14 +103,14 @@ Each phase ends with something usable, automated tests and a check in the real a
 - ✅ Driver added; binary size and `cargo audit` measured (see 4.1).
 - ✅ `engine` field in the profile (`postgres` or `mongodb`), with MongoDB-specific settings; profiles saved earlier load as `postgres`.
 - ✅ Start screen: light connection list (engine badge, production mark, most recently used first) and one "New connection" button per engine.
-- ✅ One connection form per engine: SRV (Atlas) toggle, replica-set nodes, auth database, TLS with an optional CA file, and engine detection when pasting a `postgresql://`, `mongodb://` or `mongodb+srv://` string.
+- ✅ One connection form per engine: replica-set nodes, auth database, TLS with an optional CA file, and engine detection when pasting a `postgresql://` or `mongodb://` string (`mongodb+srv://` is rejected with a clear message).
 - ✅ "Test" works for MongoDB (`buildInfo`); the URI is built without credentials and host names are validated against URI injection.
 - ✅ Test base: unit tests for URI building and connection strings, plus an ignored integration test that needs a disposable `mongod` (`HYRAX_MONGO_TEST_HOST` and `HYRAX_MONGO_TEST_PORT`; optionally `HYRAX_MONGO_TEST_USER` and `HYRAX_MONGO_TEST_PASSWORD`). It only runs `buildInfo`, which writes nothing.
 - Verified in the real application against a disposable `mongod`: test connection returned the server version.
 - Opening a MongoDB connection from the tree or the start screen shows that the explorer arrives in M1.
 
 **M1 — Connect and explore, read-only (L) — ✅ done** → *first useful milestone*
-- Connection to **local, Atlas (`mongodb+srv`) and a company server**: hosts, SRV, user, auth database, TLS with a custom CA file; test and save.
+- Connection to **local and company servers**: hosts, user, auth database, TLS with a custom CA file; test and save.
 - Tree of databases and collections; count and size.
 - Collection tab: pagination, quick filter bar and JSON filter, sort, projection, document viewer with types.
 - Production marking, time limit and cancel.
@@ -155,7 +155,7 @@ Recommended order: M0 → M1 → M2 → M3 → M4, releasing each one. M1 alread
 | Binary grows more than acceptable with the official driver | Measure in M0 before committing to the design; if it does not fit, evaluate another route |
 | Company server with a private CA does not verify (rustls does not read the Windows store) | Custom CA PEM field, same as PG; documented |
 | False sense of security from "read-only" | Say it in the UI and in `SECURITY-REVIEW.md`; require the `read` role |
-| SSH tunnel + replica sets: the driver discovers the nodes' internal names and bypasses the tunnel | Use `directConnection=true` through the tunnel; warn about the limitation; verify TLS against the real server name (M4; Atlas does not need it) |
+| SSH tunnel + replica sets: the driver discovers the nodes' internal names and bypasses the tunnel | Use `directConnection=true` through the tunnel; warn about the limitation; verify TLS against the real server name (M4) |
 | Huge documents or collections with billions of entries | Caps on size and documents, estimated count by default, no large `skip` without a warning |
 | BSON types lost when editing | Always edit on canonical Extended JSON |
 | New dependencies with security notices | `cargo audit` in each phase and a record in `SECURITY-REVIEW.md` |
