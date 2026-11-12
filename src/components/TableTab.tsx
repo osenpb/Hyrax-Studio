@@ -33,6 +33,7 @@ import StructureView from "./StructureView";
 import DdlView from "./DdlView";
 import ImportDialog from "./ImportDialog";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   connId: string;
@@ -205,7 +206,7 @@ export default function TableTab({
     setError(null);
     try {
       const result = await api.exportTable(connId, schema, table, applied, effectiveSorts, format, path);
-      setNotice(`Se exportaron ${result.rows.toLocaleString()} filas a ${path}`);
+      setNotice(t("Se exportaron {n} filas a {path}", { n: result.rows.toLocaleString(), path }));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -221,11 +222,11 @@ export default function TableTab({
   const pkIndexes = pkColumns.map((name) => pageColumns.indexOf(name));
   const pkReady = pkColumns.length > 0 && pkIndexes.every((i) => i >= 0);
   const editBlock = readOnly
-    ? "La sesión está en solo lectura: habilita la escritura para editar"
+    ? t("La sesión está en solo lectura: habilita la escritura para editar")
     : !columns
-      ? "Cargando la estructura de la tabla…"
+      ? t("Cargando la estructura de la tabla…")
       : pkColumns.length === 0
-        ? "La tabla no tiene clave primaria: no se puede editar de forma segura"
+        ? t("La tabla no tiene clave primaria: no se puede editar de forma segura")
         : null;
   const canEdit = editBlock === null && pkReady;
   const editing = editMode && canEdit;
@@ -278,7 +279,7 @@ export default function TableTab({
       setPending(emptyPending);
       setReview(null);
       setNotice(
-        `Cambios aplicados en una transacción: ${result.updated} modificadas, ${result.inserted} nuevas, ${result.deleted} eliminadas.`,
+        t("Cambios aplicados en una transacción: {updated} modificadas, {inserted} nuevas, {deleted} eliminadas.", { updated: result.updated, inserted: result.inserted, deleted: result.deleted }),
       );
       refresh();
     } catch (e) {
@@ -301,7 +302,7 @@ export default function TableTab({
     if (!fk) return;
     const values = valuesOf(rowIndex, fk.columns);
     if (!values) {
-      setNotice("Esa clave foránea tiene un valor NULL: no apunta a ningún registro.");
+      setNotice(t("Esa clave foránea tiene un valor NULL: no apunta a ningún registro."));
       return;
     }
     onOpenTable(fk.refSchema, fk.refTable, equalsOn(fk.refColumns, values));
@@ -330,12 +331,12 @@ export default function TableTab({
   const hasNext = rowsShown === pageSize;
   const total =
     exactCount !== null
-      ? `${exactCount.toLocaleString()} filas`
+      ? t("{n} filas", { n: exactCount.toLocaleString() })
       : applied.length > 0
-        ? "con filtros · usa Contar exacto"
+        ? t("con filtros · usa Contar exacto")
         : page?.estimatedRows != null
-          ? `~${page.estimatedRows.toLocaleString()} filas (estimado)`
-          : "total desconocido";
+          ? t("~{n} filas (estimado)", { n: page.estimatedRows.toLocaleString() })
+          : t("total desconocido");
   const soft = error !== null && /^(Consulta cancelada|Tiempo de espera)/.test(error);
 
   return (
@@ -343,13 +344,13 @@ export default function TableTab({
       <div className="toolbar wrap">
         <div className="segmented">
           <button className={view === "data" ? "active" : ""} onClick={() => setView("data")}>
-            Datos
+            {t("Datos")}
           </button>
           <button className={view === "structure" ? "active" : ""} onClick={() => setView("structure")}>
-            Estructura
+            {t("Estructura")}
           </button>
           <button className={view === "ddl" ? "active" : ""} onClick={() => setView("ddl")}>
-            DDL
+            {t("DDL")}
           </button>
         </div>
         <span className="chip chip-plain">
@@ -364,46 +365,46 @@ export default function TableTab({
         />
         <span className="spacer" />
         {typedFilters > 0 && (
-          <button onClick={() => setFilterInputs({})} title="Quitar todos los filtros">
+          <button onClick={() => setFilterInputs({})} title={t("Quitar todos los filtros")}>
             <Icon name="close" size={12} /> Limpiar filtros ({typedFilters})
           </button>
         )}
         {editing && (
-          <button onClick={addInsert} title="Añadir una fila nueva (no se guarda hasta aplicar los cambios)">
-            <Icon name="plus" size={13} /> Nueva fila
+          <button onClick={addInsert} title={t("Añadir una fila nueva (no se guarda hasta aplicar los cambios)")}>
+            <Icon name="plus" size={13} /> {t("Nueva fila")}
           </button>
         )}
         <button
           className={editMode && canEdit ? "toggled" : ""}
           onClick={() => setEditMode((m) => !m)}
           disabled={(!canEdit && !editMode) || view !== "data"}
-          title={editBlock ?? "Doble clic en una celda para editarla; los cambios esperan hasta que los apliques"}
+          title={editBlock ?? t("Doble clic en una celda para editarla; los cambios esperan hasta que los apliques")}
         >
-          <Icon name="edit" size={13} /> {editing ? "Editando" : "Editar datos"}
+          <Icon name="edit" size={13} /> {editing ? t("Editando") : t("Editar datos")}
         </button>
         <button
           onClick={() => setImporting(true)}
           disabled={!columns || (structure !== null && structure.kind !== "table")}
-          title="Importar un CSV o JSON en esta tabla, en una sola transacción"
+          title={t("Importar un CSV o JSON en esta tabla, en una sola transacción")}
         >
-          <Icon name="upload" size={13} /> Importar…
+          <Icon name="upload" size={13} /> {t("Importar…")}
         </button>
         <button
           onClick={() =>
             page &&
             onPin(
-              `${schema}.${table}${applied.length > 0 ? " (filtrada)" : ""} · filas ${offset + 1}–${offset + rows.length}`,
+              `${schema}.${table}${applied.length > 0 ? t(" (filtrada)") : ""} · ${t("filas")} ${offset + 1}–${offset + rows.length}`,
               page.result,
             )
           }
           disabled={!page || view !== "data"}
-          title="Fijar las filas que se ven para compararlas con otro resultado"
+          title={t("Fijar las filas que se ven para compararlas con otro resultado")}
         >
-          <Icon name="pin" size={13} /> Fijar
+          <Icon name="pin" size={13} /> {t("Fijar")}
         </button>
         <ExportMenu onExport={exportData} disabled={exporting || view !== "data"} />
         <button onClick={refresh} disabled={loading}>
-          <Icon name="refresh" size={13} /> Refrescar
+          <Icon name="refresh" size={13} /> {t("Refrescar")}
         </button>
       </div>
 
@@ -418,7 +419,7 @@ export default function TableTab({
         <div className="alert alert-ok">
           <Icon name="download" size={15} />
           <span>{notice}</span>
-          <button className="ghost icon-btn" onClick={() => setNotice(null)} title="Cerrar">
+          <button className="ghost icon-btn" onClick={() => setNotice(null)} title={t("Cerrar")}>
             <Icon name="close" size={12} />
           </button>
         </div>
@@ -427,12 +428,12 @@ export default function TableTab({
       {count > 0 && (
         <div className="pending-bar">
           <Icon name="edit" size={14} />
-          <strong>{count === 1 ? "1 cambio pendiente" : `${count} cambios pendientes`}</strong>
+          <strong>{count === 1 ? t("1 cambio pendiente") : t("{n} cambios pendientes", { n: count })}</strong>
           <span className="muted">{summarize(pending)} · todavía no se guardó nada en la base</span>
           <span className="spacer" />
-          <button onClick={() => setPending(emptyPending)}>Descartar</button>
+          <button onClick={() => setPending(emptyPending)}>{t("Descartar")}</button>
           <button className="primary" onClick={() => void openReview()}>
-            Revisar y aplicar…
+            {t("Revisar y aplicar…")}
           </button>
         </div>
       )}
@@ -457,7 +458,7 @@ export default function TableTab({
                     {selectedRows.length === 1 && structure && structure.referencedBy.length > 0 && (
                       <select
                         className="small"
-                        aria-label="Ir a los registros que referencian esta fila"
+                        aria-label={t("Ir a los registros que referencian esta fila")}
                         value=""
                         onChange={(e) => {
                           const fk = structure.referencedBy[Number(e.target.value)];
@@ -465,7 +466,7 @@ export default function TableTab({
                         }}
                       >
                         <option value="" disabled>
-                          Referenciada por…
+                          {t("Referenciada por…")}
                         </option>
                         {structure.referencedBy.map((fk, i) => (
                           <option key={`${fk.schema}.${fk.table}.${fk.name}`} value={i}>
@@ -476,7 +477,7 @@ export default function TableTab({
                     )}
                     {editing && (
                       <button className="small danger" onClick={() => markDeleted(selectedRows)}>
-                        <Icon name="trash" size={12} /> Marcar para eliminar
+                        <Icon name="trash" size={12} /> {t("Marcar para eliminar")}
                       </button>
                     )}
                   </>
@@ -485,9 +486,9 @@ export default function TableTab({
             )}
             {loading && (
               <div className="loading">
-                Cargando…
+                {t("Cargando…")}
                 <button className="danger small" onClick={cancel}>
-                  Cancelar
+                  {t("Cancelar")}
                 </button>
               </div>
             )}
@@ -495,7 +496,7 @@ export default function TableTab({
           <div className="statusbar">
             <button
               className="icon-btn"
-              title="Página anterior"
+              title={t("Página anterior")}
               disabled={offset === 0 || loading}
               onClick={() => setOffset(Math.max(0, offset - pageSize))}
             >
@@ -503,7 +504,7 @@ export default function TableTab({
             </button>
             <button
               className="icon-btn"
-              title="Página siguiente"
+              title={t("Página siguiente")}
               disabled={!hasNext || loading}
               onClick={() => setOffset(offset + pageSize)}
             >
@@ -525,17 +526,17 @@ export default function TableTab({
             <span className="muted">
               {rowsShown > 0 ? `${(offset + 1).toLocaleString()}–${(offset + rowsShown).toLocaleString()}` : "0"} · {total}
             </span>
-            <button onClick={countExact}>Contar exacto</button>
+            <button onClick={countExact}>{t("Contar exacto")}</button>
             <span className="spacer" />
             {exporting && (
               <span className="status-running">
                 Exportando…{" "}
                 <button className="danger small" onClick={cancel}>
-                  Cancelar
+                  {t("Cancelar")}
                 </button>
               </span>
             )}
-            {editing && !exporting && <span className="muted">Doble clic en una celda para editar</span>}
+            {editing && !exporting && <span className="muted">{t("Doble clic en una celda para editar")}</span>}
             {page && !exporting && !editing && <span className="muted">{page.elapsedMs} ms</span>}
           </div>
         </>
@@ -572,7 +573,7 @@ export default function TableTab({
           onClose={() => setImporting(false)}
           onDone={(inserted) => {
             setImporting(false);
-            setNotice(`Se importaron ${inserted.toLocaleString()} filas en una sola transacción.`);
+            setNotice(t("Se importaron {n} filas en una sola transacción.", { n: inserted.toLocaleString() }));
             refresh();
           }}
         />
@@ -581,12 +582,12 @@ export default function TableTab({
       {review && (
         <div className="modal-backdrop" onMouseDown={() => !review.applying && setReview(null)}>
           <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
-            <h2>Revisar y aplicar cambios</h2>
+            <h2>{t("Revisar y aplicar cambios")}</h2>
             <p>
-              {summarize(pending)} en <strong>{schema}.{table}</strong>. Todo se ejecuta en una sola transacción: si
-              un cambio falla o la fila cambió mientras tanto, no se aplica ninguno.
+              {summarize(pending)} {t("en")} <strong>{schema}.{table}</strong>
+              {t(". Todo se ejecuta en una sola transacción: si un cambio falla o la fila cambió mientras tanto, no se aplica ninguno.")}
             </p>
-            {review.sql.length === 0 && !review.error && <p className="muted">Preparando…</p>}
+            {review.sql.length === 0 && !review.error && <p className="muted">{t("Preparando…")}</p>}
             {review.sql.length > 0 && <pre className="sql-preview">{review.sql.join("\n")}</pre>}
             {review.error && (
               <div className="alert alert-error">
@@ -597,20 +598,20 @@ export default function TableTab({
             {readOnly && (
               <div className="alert alert-warn">
                 <Icon name="lock" size={15} />
-                <span>La sesión está en solo lectura: habilita la escritura para aplicar.</span>
+                <span>{t("La sesión está en solo lectura: habilita la escritura para aplicar.")}</span>
               </div>
             )}
             <div className="modal-actions">
               <span className="spacer" />
               <button onClick={() => setReview(null)} disabled={review.applying}>
-                Cerrar
+                {t("Cerrar")}
               </button>
               <button
                 className="danger"
                 disabled={review.applying || readOnly || review.sql.length === 0}
                 onClick={() => void applyPending()}
               >
-                {review.applying ? "Aplicando…" : "Aplicar cambios"}
+                {review.applying ? t("Aplicando…") : t("Aplicar cambios")}
               </button>
             </div>
           </div>

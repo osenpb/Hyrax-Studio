@@ -1,6 +1,7 @@
 import type { ForeignKey, TableStructure } from "../api";
 import { bytes, count } from "../format";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   structure: TableStructure | null;
@@ -23,11 +24,11 @@ function FkTable({
     <table className="grid struct-table">
       <thead>
         <tr>
-          <th>Nombre</th>
-          <th>{incoming ? "Tabla que referencia" : "Columnas"}</th>
-          <th>{incoming ? "Columnas referenciadas aquí" : "Referencia a"}</th>
-          <th>Al actualizar</th>
-          <th>Al eliminar</th>
+          <th>{t("Nombre")}</th>
+          <th>{incoming ? t("Tabla que referencia") : t("Columnas")}</th>
+          <th>{incoming ? t("Columnas referenciadas aquí") : t("Referencia a")}</th>
+          <th>{t("Al actualizar")}</th>
+          <th>{t("Al eliminar")}</th>
           <th />
         </tr>
       </thead>
@@ -50,10 +51,10 @@ function FkTable({
               <td>
                 <button
                   className="small"
-                  title={`Abrir ${target.schema}.${target.table}`}
+                  title={t("Abrir {name}", { name: `${target.schema}.${target.table}` })}
                   onClick={() => onOpenTable(target.schema, target.table)}
                 >
-                  <Icon name="open" size={11} /> Abrir
+                  <Icon name="open" size={11} /> {t("Abrir")}
                 </button>
               </td>
             </tr>
@@ -73,7 +74,7 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
       </div>
     );
   }
-  if (!structure) return <div className="grid-empty">Cargando estructura…</div>;
+  if (!structure) return <div className="grid-empty">{t("Cargando estructura…")}</div>;
   const fkColumns = new Set(structure.foreignKeys.flatMap((fk) => fk.columns));
   const plainConstraints = structure.constraints.filter((c) => c.kind !== "foreign");
   const s = structure.stats;
@@ -83,18 +84,18 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
       {structure.comment && <p className="struct-comment">{structure.comment}</p>}
 
       <section>
-        <h3>Columnas ({structure.columns.length})</h3>
+        <h3>{t("Columnas")} ({structure.columns.length})</h3>
         <table className="grid struct-table">
           <thead>
             <tr>
               <th className="rownum">#</th>
-              <th>Columna</th>
-              <th>Tipo</th>
-              <th>Nulo</th>
-              <th>Por defecto</th>
+              <th>{t("Columna")}</th>
+              <th>{t("Tipo")}</th>
+              <th>{t("Nulo")}</th>
+              <th>{t("Por defecto")}</th>
               <th>PK</th>
               <th>FK</th>
-              <th>Comentario</th>
+              <th>{t("Comentario")}</th>
             </tr>
           </thead>
           <tbody>
@@ -105,9 +106,9 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
                 <td>
                   {c.dataType}
                   {c.identity && <span className="tag tag-ok">identity {c.identity.toLowerCase()}</span>}
-                  {c.generated && <span className="tag tag-ok">generada</span>}
+                  {c.generated && <span className="tag tag-ok">{t("generada")}</span>}
                 </td>
-                <td>{c.nullable ? "sí" : "no"}</td>
+                <td>{c.nullable ? t("sí") : t("no")}</td>
                 <td className={c.default === null ? "null" : ""}>{c.default ?? "—"}</td>
                 <td>{c.isPrimaryKey ? <Icon name="key" className="ic-pk" /> : ""}</td>
                 <td>{fkColumns.has(c.name) ? <Icon name="foreign" className="ic-fk" /> : ""}</td>
@@ -119,35 +120,35 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
       </section>
 
       <section>
-        <h3>Claves foráneas ({structure.foreignKeys.length})</h3>
+        <h3>{t("Claves foráneas")} ({structure.foreignKeys.length})</h3>
         {structure.foreignKeys.length === 0 ? (
-          <p className="muted struct-none">Esta tabla no referencia a otras.</p>
+          <p className="muted struct-none">{t("Esta tabla no referencia a otras.")}</p>
         ) : (
           <FkTable fks={structure.foreignKeys} incoming={false} onOpenTable={onOpenTable} />
         )}
       </section>
 
       <section>
-        <h3>Referenciada por ({structure.referencedBy.length})</h3>
+        <h3>{t("Referenciada por")} ({structure.referencedBy.length})</h3>
         {structure.referencedBy.length === 0 ? (
-          <p className="muted struct-none">Ninguna otra tabla la referencia.</p>
+          <p className="muted struct-none">{t("Ninguna otra tabla la referencia.")}</p>
         ) : (
           <FkTable fks={structure.referencedBy} incoming onOpenTable={onOpenTable} />
         )}
       </section>
 
       <section>
-        <h3>Índices ({structure.indexes.length})</h3>
+        <h3>{t("Índices")} ({structure.indexes.length})</h3>
         {structure.indexes.length === 0 ? (
-          <p className="muted struct-none">Sin índices.</p>
+          <p className="muted struct-none">{t("Sin índices.")}</p>
         ) : (
           <table className="grid struct-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Definición</th>
-                <th>Tipo</th>
-                <th>Tamaño</th>
+                <th>{t("Nombre")}</th>
+                <th>{t("Definición")}</th>
+                <th>{t("Tipo")}</th>
+                <th>{t("Tamaño")}</th>
               </tr>
             </thead>
             <tbody>
@@ -156,8 +157,8 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
                   <td>{i.name}</td>
                   <td className="wrap-cell">{i.definition}</td>
                   <td>
-                    {i.primary ? "primaria" : i.unique ? "única" : "normal"}
-                    {!i.valid && <span className="tag tag-danger">inválido</span>}
+                    {i.primary ? t("primaria") : i.unique ? t("única") : t("normal")}
+                    {!i.valid && <span className="tag tag-danger">{t("inválido")}</span>}
                   </td>
                   <td>{bytes(i.sizeBytes)}</td>
                 </tr>
@@ -168,16 +169,16 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
       </section>
 
       <section>
-        <h3>Restricciones ({plainConstraints.length})</h3>
+        <h3>{t("Restricciones")} ({plainConstraints.length})</h3>
         {plainConstraints.length === 0 ? (
-          <p className="muted struct-none">Sin restricciones de clave, unicidad ni CHECK.</p>
+          <p className="muted struct-none">{t("Sin restricciones de clave, unicidad ni CHECK.")}</p>
         ) : (
           <table className="grid struct-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Tipo</th>
-                <th>Definición</th>
+                <th>{t("Nombre")}</th>
+                <th>{t("Tipo")}</th>
+                <th>{t("Definición")}</th>
               </tr>
             </thead>
             <tbody>
@@ -186,7 +187,7 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
                   <td>{c.name}</td>
                   <td>
                     {c.kind}
-                    {!c.validated && <span className="tag tag-warn">sin validar</span>}
+                    {!c.validated && <span className="tag tag-warn">{t("sin validar")}</span>}
                   </td>
                   <td className="wrap-cell">{c.definition}</td>
                 </tr>
@@ -197,16 +198,16 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
       </section>
 
       <section>
-        <h3>Triggers ({structure.triggers.length})</h3>
+        <h3>{t("Triggers")} ({structure.triggers.length})</h3>
         {structure.triggers.length === 0 ? (
-          <p className="muted struct-none">Sin triggers.</p>
+          <p className="muted struct-none">{t("Sin triggers.")}</p>
         ) : (
           <table className="grid struct-table">
             <thead>
               <tr>
-                <th>Nombre</th>
-                <th>Definición</th>
-                <th>Estado</th>
+                <th>{t("Nombre")}</th>
+                <th>{t("Definición")}</th>
+                <th>{t("Estado")}</th>
               </tr>
             </thead>
             <tbody>
@@ -223,23 +224,23 @@ export default function StructureView({ structure, error, onOpenTable }: Props) 
       </section>
 
       <section>
-        <h3>Estadísticas</h3>
+        <h3>{t("Estadísticas")}</h3>
         <dl className="stats">
-          <dt>Filas (estimado)</dt>
+          <dt>{t("Filas (estimado)")}</dt>
           <dd>{count(s.estimatedRows)}</dd>
-          <dt>Tamaño total</dt>
+          <dt>{t("Tamaño total")}</dt>
           <dd>{bytes(s.totalBytes)}</dd>
-          <dt>Datos / índices</dt>
+          <dt>{t("Datos / índices")}</dt>
           <dd>
             {bytes(s.tableBytes)} / {bytes(s.indexBytes)}
           </dd>
-          <dt>Filas muertas</dt>
+          <dt>{t("Filas muertas")}</dt>
           <dd>{count(s.deadTuples)}</dd>
-          <dt>Último vacuum</dt>
+          <dt>{t("Último vacuum")}</dt>
           <dd>{s.lastVacuum ?? "nunca"}</dd>
-          <dt>Último analyze</dt>
+          <dt>{t("Último analyze")}</dt>
           <dd>{s.lastAnalyze ?? "nunca"}</dd>
-          <dt>Lecturas secuenciales / por índice</dt>
+          <dt>{t("Lecturas secuenciales / por índice")}</dt>
           <dd>
             {count(s.seqScans)} / {count(s.idxScans)}
           </dd>
