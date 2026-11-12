@@ -40,7 +40,8 @@ DataGrip and DBeaver do a lot, sometimes too much, and they are heavy. Hyrax Stu
 
 **MongoDB (read-only)**
 - Tree of databases, collections and views; collection tab with a quick filter (`status=OPEN age>30 name~ana`) or JSON filter, sort, fields and paging, estimated or exact counts.
-- Document viewer that shows every BSON type (ObjectId, int, long, decimal, date…). Filters that run JavaScript on the server (`$where`, `$function`) are rejected.
+- **Autocomplete** in the filter, sort and fields bars: field names (including nested ones such as `shipping.city`), operators and the values seen in the loaded documents; it also works inside a JSON filter (keys, `$` operators and values). Arrow keys and Tab or Enter choose, Esc closes and Ctrl+Space opens the list.
+- **Table or JSON view** of the collection, and a document viewer that alternates between a tree (every BSON type visible: ObjectId, int, long, decimal, date…) and plain JSON. Filters that run JavaScript on the server (`$where`, `$function`) are rejected.
 - PostgreSQL and MongoDB connections can be open at the same time.
 
 **Connect**
