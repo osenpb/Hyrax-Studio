@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, errorText, noMongo, noSsh, type ConnectionProfile, type Engine } from "../api";
 import { detectEngine, parseConnectionString, parseMongoUri } from "../connstring";
+import { t } from "../i18n";
 
 interface Props {
   initial: ConnectionProfile | null;
@@ -70,12 +71,12 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
     try {
       const engine = detectEngine(text);
       if (engine && initial && engine !== p.engine) {
-        throw new Error(`Esta conexión es de ${p.engine === "mongodb" ? "MongoDB" : "PostgreSQL"}; la cadena es de otro motor.`);
+        throw new Error(t("Esta conexión es de {engine}; la cadena es de otro motor.", { engine: p.engine === "mongodb" ? "MongoDB" : "PostgreSQL" }));
       }
       const done = (hasPassword: boolean, notes: string[]) =>
         setMessage({
           ok: true,
-          text: ["Cadena aplicada." + (hasPassword ? " La contraseña se guardará en el almacén del sistema." : ""), ...notes].join(" "),
+          text: [t("Cadena aplicada.") + (hasPassword ? " " + t("La contraseña se guardará en el almacén del sistema.") : ""), ...notes].join(" "),
         });
       if (engine === "mongodb") {
         const { fields, mongo: settings, notes } = parseMongoUri(text);
@@ -143,11 +144,11 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
     const unknown = text.match(/HYRAX_SSH_UNKNOWN_KEY:(SHA256:\S+)/);
     if (unknown) {
       setUnknownKey(unknown[1]);
-      return "El servidor SSH se presenta por primera vez. Comprueba que esta huella es la de tu servidor y confía en ella para continuar.";
+      return t("El servidor SSH se presenta por primera vez. Comprueba que esta huella es la de tu servidor y confía en ella para continuar.");
     }
     const changed = text.match(/HYRAX_SSH_CHANGED_KEY:(SHA256:\S+)/);
     if (changed) {
-      return `¡La clave del servidor SSH cambió! Esperada: ${p.ssh.fingerprint}. Recibida: ${changed[1]}. Puede ser un ataque de intermediario; si el cambio es legítimo, pulsa «Olvidar» y vuelve a confiar.`;
+      return t("¡La clave del servidor SSH cambió! Esperada: {expected}. Recibida: {received}. Puede ser un ataque de intermediario; si el cambio es legítimo, pulsa «Olvidar» y vuelve a confiar.", { expected: String(p.ssh.fingerprint), received: changed[1] });
     }
     return text;
   };
@@ -180,54 +181,54 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
       <label className="check">
         <input type="checkbox" checked={p.ssh.enabled} onChange={(e) => setSsh("enabled", e.target.checked)} />
         <span>
-          <strong>Conectar por un túnel SSH</strong>
-          <small>El servidor de arriba se alcanza desde el servidor SSH (útil si Postgres no es accesible directamente).</small>
+          <strong>{t("Conectar por un túnel SSH")}</strong>
+          <small>{t("El servidor de arriba se alcanza desde el servidor SSH (útil si Postgres no es accesible directamente).")}</small>
         </span>
       </label>
       {p.ssh.enabled && (
         <>
           <div className="row">
             <label className="grow">
-              Host SSH
+              {t("Host SSH")}
               <input value={p.ssh.host} onChange={(e) => setSsh("host", e.target.value)} />
             </label>
             <label className="port">
-              Puerto
+              {t("Puerto")}
               <input type="number" value={p.ssh.port} onChange={(e) => setSsh("port", Number(e.target.value))} />
             </label>
           </div>
           <div className="row">
             <label className="grow">
-              Usuario SSH
+              {t("Usuario SSH")}
               <input value={p.ssh.user} onChange={(e) => setSsh("user", e.target.value)} />
             </label>
             <label className="grow">
-              {p.ssh.keyPath ? "Frase de la clave" : "Contraseña SSH"}
+              {p.ssh.keyPath ? t("Frase de la clave") : t("Contraseña SSH")}
               <input
                 type="password"
                 autoComplete="off"
                 value={p.ssh.secret}
                 placeholder={
                   p.ssh.clearSecret
-                    ? "Se olvidará la guardada al guardar"
+                    ? t("Se olvidará la guardada al guardar")
                     : initial?.ssh?.hasSecret
-                      ? "Guardada en el sistema (vacío = conservar)"
+                      ? t("Guardada en el sistema (vacío = conservar)")
                       : ""
                 }
                 onChange={(e) => setSsh("secret", e.target.value)}
               />
               {initial?.ssh?.hasSecret && !p.ssh.clearSecret && !p.ssh.secret && (
                 <button type="button" className="small" onClick={() => setSsh("clearSecret", true)}>
-                  Olvidar la guardada
+                  {t("Olvidar la guardada")}
                 </button>
               )}
             </label>
           </div>
           <label>
-            Clave privada (archivo, opcional; vacío = contraseña)
+            {t("Clave privada (archivo, opcional; vacío = contraseña)")}
             <input
               value={p.ssh.keyPath ?? ""}
-              placeholder="~/.ssh/id_ed25519 o C:\Users\tu\.ssh\id_ed25519"
+              placeholder={t("~/.ssh/id_ed25519 o C:\Users\tu\.ssh\id_ed25519")}
               onChange={(e) => setSsh("keyPath", e.target.value.trim() === "" ? null : e.target.value)}
             />
           </label>
@@ -238,7 +239,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
                   Huella de confianza: <code>{p.ssh.fingerprint}</code>
                 </span>
                 <button type="button" className="small" onClick={() => setSsh("fingerprint", null)}>
-                  Olvidar
+                  {t("Olvidar")}
                 </button>
               </>
             ) : unknownKey ? (
@@ -247,11 +248,11 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
                   Huella del servidor: <code>{unknownKey}</code>
                 </span>
                 <button type="button" className="small primary" onClick={() => setSsh("fingerprint", unknownKey)}>
-                  Confiar en esta huella
+                  {t("Confiar en esta huella")}
                 </button>
               </>
             ) : (
-              <span className="muted">Pulsa «Probar» para ver la huella del servidor y confiar en ella.</span>
+              <span className="muted">{t("Pulsa «Probar» para ver la huella del servidor y confiar en ella.")}</span>
             )}
           </div>
         </>
@@ -262,9 +263,9 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
-        <h2>{initial ? "Editar conexión" : "Nueva conexión"}</h2>
+        <h2>{initial ? t("Editar conexión") : t("Nueva conexión")}</h2>
         {!initial && (
-          <div className="engine-pick" role="radiogroup" aria-label="Motor">
+          <div className="engine-pick" role="radiogroup" aria-label={t("Motor")}>
             {(["postgres", "mongodb"] as const).map((e) => (
               <button
                 key={e}
@@ -280,7 +281,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
           </div>
         )}
         <label>
-          Cadena de conexión (opcional)
+          {t("Cadena de conexión (opcional)")}
           <input
             autoComplete="off"
             spellCheck={false}
@@ -300,33 +301,33 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
           />
         </label>
         <label>
-          Nombre
+          {t("Nombre")}
           <input value={p.name} placeholder={finalName} onChange={(e) => set("name", e.target.value)} />
         </label>
         {mongo && (
           <label className="check">
             <input type="checkbox" checked={p.mongo.srv} onChange={(e) => setMongo("srv", e.target.checked)} />
             <span>
-              <strong>Usar mongodb+srv (Atlas)</strong>
-              <small>El host es el nombre DNS del cluster; los nodos y el puerto salen del registro DNS. Exige TLS.</small>
+              <strong>{t("Usar mongodb+srv (Atlas)")}</strong>
+              <small>{t("El host es el nombre DNS del cluster; los nodos y el puerto salen del registro DNS. Exige TLS.")}</small>
             </span>
           </label>
         )}
         <div className="row">
           <label className="grow">
-            {mongo && p.mongo.srv ? "Host (nombre DNS del cluster)" : "Host"}
+            {mongo && p.mongo.srv ? t("Host (nombre DNS del cluster)") : "Host"}
             <input value={p.host} onChange={(e) => set("host", e.target.value)} />
           </label>
           {!(mongo && p.mongo.srv) && (
             <label className="port">
-              Puerto
+              {t("Puerto")}
               <input type="number" value={p.port} onChange={(e) => set("port", Number(e.target.value))} />
             </label>
           )}
         </div>
         {mongo && !p.mongo.srv && (
           <label>
-            Otros nodos del conjunto de réplicas (opcional, separados por comas)
+            {t("Otros nodos del conjunto de réplicas (opcional, separados por comas)")}
             <input
               value={p.mongo.extraHosts}
               placeholder="host2:27017, host3:27017"
@@ -335,21 +336,21 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
           </label>
         )}
         <label>
-          {mongo ? "Base de datos (opcional)" : "Base de datos"}
+          {mongo ? t("Base de datos (opcional)") : t("Base de datos")}
           <input value={p.database} onChange={(e) => set("database", e.target.value)} />
         </label>
         <div className="row">
           <label className="grow">
-            Usuario
+            {t("Usuario")}
             <input value={p.user} onChange={(e) => set("user", e.target.value)} />
           </label>
           <label className="grow">
-            Contraseña
+            {t("Contraseña")}
             <input
               type="password"
               autoComplete="off"
               value={p.password}
-              placeholder={initial?.hasPassword ? "Guardada en el sistema (vacío = conservar)" : ""}
+              placeholder={initial?.hasPassword ? t("Guardada en el sistema (vacío = conservar)") : ""}
               onChange={(e) => set("password", e.target.value)}
             />
           </label>
@@ -357,25 +358,24 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
         <label>
           {mongo ? "TLS" : "SSL"}
           <select value={p.sslMode} onChange={(e) => set("sslMode", e.target.value as ConnectionProfile["sslMode"])}>
-            <option value="disable">Desactivado</option>
-            <option value="require">Cifrado sin verificar el certificado</option>
-            <option value="verify">Cifrado y verificar el certificado (recomendado)</option>
+            <option value="disable">{t("Desactivado")}</option>
+            <option value="require">{t("Cifrado sin verificar el certificado")}</option>
+            <option value="verify">{t("Cifrado y verificar el certificado (recomendado)")}</option>
           </select>
         </label>
         {p.sslMode === "require" && (
           <div className="alert alert-warn">
             <span>
-              Sin verificar el certificado, la conexión va cifrada pero no se comprueba con quién hablas: un
-              intermediario podría suplantar al servidor. Úsalo solo en redes de confianza.
+              {t("Sin verificar el certificado, la conexión va cifrada pero no se comprueba con quién hablas: un intermediario podría suplantar al servidor. Úsalo solo en redes de confianza.")}
             </span>
           </div>
         )}
         {p.sslMode === "verify" && (
           <label>
-            Certificado de la CA (archivo PEM, opcional)
+            {t("Certificado de la CA (archivo PEM, opcional)")}
             <input
               value={p.caCertPath ?? ""}
-              placeholder="Vacío = usar las entidades de confianza del sistema"
+              placeholder={t("Vacío = usar las entidades de confianza del sistema")}
               onChange={(e) => set("caCertPath", e.target.value.trim() === "" ? null : e.target.value)}
             />
           </label>
@@ -383,7 +383,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
         {mongo && (
           <div className="row">
             <label className="grow">
-              Base de autenticación
+              {t("Base de autenticación")}
               <input
                 value={p.mongo.authSource ?? ""}
                 placeholder="admin"
@@ -391,7 +391,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
               />
             </label>
             <label className="grow">
-              Conjunto de réplicas (opcional)
+              {t("Conjunto de réplicas (opcional)")}
               <input
                 value={p.mongo.replicaSet ?? ""}
                 onChange={(e) => setMongo("replicaSet", e.target.value.trim() === "" ? null : e.target.value)}
@@ -407,8 +407,8 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
               onChange={(e) => setMongo("directConnection", e.target.checked)}
             />
             <span>
-              <strong>Conexión directa a este nodo</strong>
-              <small>No descubre el resto del conjunto de réplicas. Útil si solo se llega a ese nodo.</small>
+              <strong>{t("Conexión directa a este nodo")}</strong>
+              <small>{t("No descubre el resto del conjunto de réplicas. Útil si solo se llega a ese nodo.")}</small>
             </span>
           </label>
         )}
@@ -416,33 +416,32 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
         <label className="check">
           <input type="checkbox" checked={p.readOnly} onChange={(e) => set("readOnly", e.target.checked)} />
           <span>
-            <strong>Abrir en modo solo lectura</strong>
+            <strong>{t("Abrir en modo solo lectura")}</strong>
             <small>
               {mongo
-                ? "Hyrax no lanzará operaciones de escritura. Es un guardarraíl: MongoDB no tiene solo lectura por sesión, así que la protección real es usar un usuario con el rol read."
-                : "Postgres rechaza INSERT, UPDATE, DELETE y DDL en la sesión. Puedes habilitar escritura después desde el editor SQL."}
+                ? t("Hyrax no lanzará operaciones de escritura. Es un guardarraíl: MongoDB no tiene solo lectura por sesión, así que la protección real es usar un usuario con el rol read.")
+                : t("Postgres rechaza INSERT, UPDATE, DELETE y DDL en la sesión. Puedes habilitar escritura después desde el editor SQL.")}
             </small>
           </span>
         </label>
         <label className="check">
           <input type="checkbox" checked={p.production} onChange={(e) => set("production", e.target.checked)} />
           <span>
-            <strong>Marcar como producción</strong>
+            <strong>{t("Marcar como producción")}</strong>
             <small>
-              Resalta la conexión en rojo en toda la interfaz y exige escribir el nombre de la base para habilitar la
-              escritura.
+              {t("Resalta la conexión en rojo en toda la interfaz y exige escribir el nombre de la base para habilitar la escritura.")}
             </small>
           </span>
         </label>
         {message && <div className={"alert " + (message.ok ? "alert-ok" : "alert-error")}>{message.text}</div>}
         <div className="modal-actions">
           <button onClick={test} disabled={!valid || busy}>
-            Probar
+            {t("Probar")}
           </button>
           <span className="spacer" />
-          <button onClick={onClose}>Cancelar</button>
-          <button className="primary" onClick={save} disabled={!canSave || busy} title={valid && !canSave ? "Pulsa Probar y confía en la huella del servidor SSH" : undefined}>
-            Guardar
+          <button onClick={onClose}>{t("Cancelar")}</button>
+          <button className="primary" onClick={save} disabled={!canSave || busy} title={valid && !canSave ? t("Pulsa Probar y confía en la huella del servidor SSH") : undefined}>
+            {t("Guardar")}
           </button>
         </div>
       </div>
