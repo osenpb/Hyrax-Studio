@@ -1,6 +1,6 @@
 # Plan: MongoDB support
 
-Status: **phase M0 done** (2026-11-11): MongoDB connections can be created, saved and tested; the explorer (M1) is next. This document fixes the scope, the technical decisions, the phases and the risks.
+Status: **phases M0 and M1 done** (2026-11-11): MongoDB connections can be created, tested and explored read-only; query and analysis (M2) is next. This document fixes the scope, the technical decisions, the phases and the risks.
 
 Goal: Hyrax Studio can connect to MongoDB and cover the everyday essentials (browse, query, review and fix documents) with the same safety rules it already has for PostgreSQL: read-only by default, production marked with confirmation, credentials in the system store, and the operation shown before it is applied.
 
@@ -109,11 +109,16 @@ Each phase ends with something usable, automated tests and a check in the real a
 - Verified in the real application against a disposable `mongod`: test connection returned the server version.
 - Opening a MongoDB connection from the tree or the start screen shows that the explorer arrives in M1.
 
-**M1 — Connect and explore, read-only (L)** → *first useful milestone*
+**M1 — Connect and explore, read-only (L) — ✅ done** → *first useful milestone*
 - Connection to **local, Atlas (`mongodb+srv`) and a company server**: hosts, SRV, user, auth database, TLS with a custom CA file; test and save.
 - Tree of databases and collections; count and size.
 - Collection tab: pagination, quick filter bar and JSON filter, sort, projection, document viewer with types.
 - Production marking, time limit and cancel.
+- Done: server → databases (with size) → collections and views tree; collection tab with a quick filter bar (`status=OPEN age>30 name~ana`, or a JSON filter), optional sort and fields, 25/50/100 documents per page, estimated count and an exact count that uses the filter; a document viewer with a tree that shows each BSON type (ObjectId, int, long, double, decimal, date…); copy as Extended JSON.
+- Safety in this phase: only read commands exist in the backend; the filter, sort and projection are validated (`$where`, `$function`, `$accumulator`, `$out` and `$merge` are rejected anywhere in them), the limit is capped at 200 documents, `skip` at 1,000,000 and a page at 8 MB; every query has `maxTimeMS` (60 s by default, 5 min cap in production).
+- A user who cannot list all databases (a role on a single one) sees the database given in the connection; the `read` role is still the real barrier.
+- Verified against a disposable `mongod` 8.0: an integration test (databases, collections, a view, filter, sort, paging, projection, counts, BSON types, errors) and the real application (tree, collection, quick filter cross-checked against a direct `mongosh` count, document viewer).
+- Not in M1: cancelling a running query (it stops at `maxTimeMS`), a quick filter for dates with time zones other than UTC, and arrays of documents in the grid beyond a one-line summary.
 - Risk to watch: performance with huge collections and large documents.
 
 **M2 — Query and analysis (L)**
