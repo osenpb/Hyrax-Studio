@@ -3,10 +3,12 @@ import { api, errorText, type ResultSet } from "../api";
 import { copyText } from "../clipboard";
 import { cellText, columnsOf, describe, formatJson } from "../ejson";
 import { buildFilter, buildProjection, buildSort } from "../mongoFilter";
+import { mergeSample, suggestFields, suggestFilter } from "../mongoSuggest";
 import Icon from "./Icon";
 import JsonText from "./JsonText";
 import JsonTree from "./JsonTree";
 import ResultGrid from "./ResultGrid";
+import SuggestInput from "./SuggestInput";
 
 interface Props {
   profileId: string;
@@ -37,6 +39,8 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
   const [reloadKey, setReloadKey] = useState(0);
 
   const [docs, setDocs] = useState<Doc[]>([]);
+  // Documentos vistos en esta pestaña: de ahí salen las sugerencias de campos y valores.
+  const [sample, setSample] = useState<Doc[]>([]);
   const [hasNext, setHasNext] = useState(false);
   const [truncated, setTruncated] = useState(false);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -66,6 +70,7 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         const parsed = page.documents.map((d) => JSON.parse(d) as Doc);
         setHasNext(parsed.length > pageSize);
         setDocs(parsed.slice(0, pageSize));
+        setSample((prev) => mergeSample(prev, parsed));
         setTruncated(page.truncated);
         setElapsed(page.elapsedMs);
         setViewing(null);
@@ -169,16 +174,15 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
 
       <div className="mongo-query">
         <div className="mongo-query-row">
-          <input
+          <SuggestInput
             className="mongo-filter"
-            aria-label="Filtro"
-            spellCheck={false}
-            autoComplete="off"
+            ariaLabel="Filtro"
             value={filterText}
-            placeholder='Filtro: status=OPEN age>30  ·  o JSON { "status": "OPEN" }'
+            placeholder='Filtro: estado=ABIERTO edad>30  ·  o JSON { "estado": "ABIERTO" }  ·  Ctrl+Espacio sugiere'
             title={HELP}
-            onChange={(e) => setFilterText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()}
+            onChange={setFilterText}
+            onSubmit={search}
+            suggest={(text, caret, force) => suggestFilter(text, caret, sample, force)}
           />
           <button className="primary" onClick={search} disabled={loading}>
             Buscar
@@ -189,21 +193,21 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         </div>
         {optionsOpen && (
           <div className="mongo-query-row">
-            <input
-              aria-label="Orden"
-              spellCheck={false}
+            <SuggestInput
+              ariaLabel="Orden"
               value={sortText}
               placeholder="Orden: -creado nombre  ·  o { &quot;creado&quot;: -1 }"
-              onChange={(e) => setSortText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
+              onChange={setSortText}
+              onSubmit={search}
+              suggest={(text, caret, force) => suggestFields(text, caret, sample, force)}
             />
-            <input
-              aria-label="Campos"
-              spellCheck={false}
+            <SuggestInput
+              ariaLabel="Campos"
               value={projectionText}
               placeholder="Campos: nombre email -_id"
-              onChange={(e) => setProjectionText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
+              onChange={setProjectionText}
+              onSubmit={search}
+              suggest={(text, caret, force) => suggestFields(text, caret, sample, force)}
             />
           </div>
         )}

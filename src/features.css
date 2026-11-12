@@ -926,3 +926,57 @@ select.small {
 .doc-viewer-body .json-text {
   padding: 0 6px;
 }
+
+.suggest {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.suggest > input {
+  flex: 1;
+  min-width: 0;
+}
+.suggest-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.suggest-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: var(--mono-weight);
+}
+.suggest-list li.active {
+  background: var(--accent-soft);
+}
+.suggest-label {
+  color: var(--text);
+  white-space: nowrap;
+}
+.suggest-detail {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

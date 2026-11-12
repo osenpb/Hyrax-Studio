@@ -2023,3 +2023,101 @@ describe("vista JSON de MongoDB", () => {
     expect(within(viewer).getByText("ObjectId")).toBeTruthy();
   });
 });
+
+describe("MongoDB: autocompletado de la búsqueda", () => {
+  const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    await screen.findByText("Ana");
+    return screen.getByRole("textbox", { name: "Filtro" }) as HTMLInputElement;
+  };
+  const options = () => screen.queryAllByRole("option").map((o) => o.textContent ?? "");
+
+  it("sugiere campos al escribir, incluidos los anidados, y los acepta con el teclado", async () => {
+    const user = userEvent.setup();
+    const filter = await openCollection(user);
+
+    await user.type(filter, "ag");
+    expect(await screen.findByRole("listbox")).toBeTruthy();
+    expect(options()[0]).toContain("age");
+
+    await user.keyboard("{ArrowDown}{Tab}");
+    expect(filter.value).toBe("age=");
+
+    // Tras aceptar el campo aparecen enseguida los valores vistos.
+    await waitFor(() => expect(options().some((o) => o.startsWith("41"))).toBe(true));
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(filter.value).toBe("age=41");
+    // Y esa Enter solo aceptó la sugerencia: no lanzó la búsqueda.
+    expect(calls.filter((c) => c.cmd === "mongo_find").length).toBe(1);
+  });
+
+  it("encuentra campos anidados por lo que se escribe", async () => {
+    const user = userEvent.setup();
+    const filter = await openCollection(user);
+    await user.type(filter, "cit");
+    await screen.findByRole("listbox");
+    expect(options().some((o) => o.startsWith("addr.city"))).toBe(true);
+  });
+
+  it("con un campo completo ofrece los operadores, y con el operador, los valores", async () => {
+    const user = userEvent.setup();
+    const filter = await openCollection(user);
+    await user.type(filter, "age");
+    await screen.findByRole("listbox");
+    expect(options().some((o) => o.startsWith("age >") && o.includes("mayor que"))).toBe(true);
+
+    await user.type(filter, ">");
+    await waitFor(() => expect(options().some((o) => o.startsWith("30"))).toBe(true));
+  });
+
+  it("Esc cierra la lista, Ctrl+Espacio la abre y Enter sin elegir lanza la búsqueda", async () => {
+    const user = userEvent.setup();
+    const filter = await openCollection(user);
+    await user.type(filter, "na");
+    await screen.findByRole("listbox");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    await user.clear(filter);
+    await user.click(filter);
+    await user.keyboard("{Control>} {/Control}");
+    expect(await screen.findByRole("listbox")).toBeTruthy();
+    expect(options()[0]).toContain("_id");
+    await user.keyboard("{Escape}");
+
+    await user.type(filter, "name=Ana{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.cmd === "mongo_find").length).toBe(2));
+    expect(JSON.parse(String(calls.filter((c) => c.cmd === "mongo_find").pop()?.args.filter))).toEqual({ name: "Ana" });
+  });
+
+  it("se puede elegir con el ratón y el campo conserva el foco", async () => {
+    const user = userEvent.setup();
+    const filter = await openCollection(user);
+    await user.type(filter, "nam");
+    const option = (await screen.findAllByRole("option")).find((o) => (o.textContent ?? "").startsWith("name"))!;
+    await user.click(option);
+    expect(filter.value).toBe("name=");
+    expect(document.activeElement).toBe(filter);
+  });
+
+  it("también ayuda en el JSON y en el orden", async () => {
+    const user = userEvent.setup();
+    const filter = await openCollection(user);
+    await user.type(filter, '{{ "ag');
+    await screen.findByRole("listbox");
+    await user.keyboard("{Tab}");
+    expect(filter.value).toBe('{ "age"');
+
+    await user.clear(filter);
+    await user.click(screen.getByRole("button", { name: "Orden y campos" }));
+    const sort = screen.getByRole("textbox", { name: "Orden" }) as HTMLInputElement;
+    await user.type(sort, "-na");
+    await screen.findByRole("listbox");
+    await user.keyboard("{Tab}");
+    expect(sort.value).toBe("-name");
+  });
+});
