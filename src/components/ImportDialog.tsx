@@ -12,6 +12,7 @@ import {
   type Tabular,
 } from "../tabular";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   connId: string;
@@ -104,7 +105,7 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
       const result = await api.importRows(connId, schema, table, prepared.columns, prepared.rows, dryRun);
       if (dryRun) {
         setMessage(
-          `Ensayo correcto: se insertarían ${result.inserted.toLocaleString()} filas. Se hizo ROLLBACK, no se guardó nada.`,
+          t("Ensayo correcto: se insertarían {n} filas. Se hizo ROLLBACK, no se guardó nada.", { n: result.inserted.toLocaleString() }),
         );
       } else {
         onDone(result.inserted);
@@ -118,23 +119,22 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
 
   return (
     <div className="modal-backdrop" onMouseDown={() => busy === null && onClose()}>
-      <div className="modal import-dialog" role="dialog" aria-label="Importar datos" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal import-dialog" role="dialog" aria-label={t("Importar datos")} onMouseDown={(e) => e.stopPropagation()}>
         <h2>
-          Importar en {schema}.{table}
+          {t("Importar en")} {schema}.{table}
         </h2>
         <p className="muted">
-          Admite CSV, TSV y JSON (arreglo de objetos o una línea JSON por fila). Todas las filas se insertan en una
-          sola transacción: si una falla, no se importa ninguna.
+          {t("Admite CSV, TSV y JSON (arreglo de objetos o una línea JSON por fila). Todas las filas se insertan en una sola transacción: si una falla, no se importa ninguna.")}
         </p>
 
         <div className="import-file">
           <button onClick={() => void chooseFile()} disabled={busy !== null}>
-            <Icon name="file" size={13} /> {loaded ? "Elegir otro archivo…" : "Elegir archivo…"}
+            <Icon name="file" size={13} /> {loaded ? t("Elegir otro archivo…") : t("Elegir archivo…")}
           </button>
           {loaded && (
             <span className="muted" title={loaded.path}>
               {loaded.name}
-              {source ? ` · ${source.rows.length.toLocaleString()} filas · ${source.headers.length} columnas` : ""}
+              {source ? ` · ${source.rows.length.toLocaleString()} ${t("filas")} · ${source.headers.length} ${t("columnas")}` : ""}
             </span>
           )}
         </div>
@@ -142,7 +142,7 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
         {loaded && !loaded.json && (
           <div className="import-options">
             <label className="inline-select">
-              Separador
+              {t("Separador")}
               <select
                 value={delimiter}
                 onChange={(e) => {
@@ -152,7 +152,7 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
               >
                 {DELIMITERS.map((d) => (
                   <option key={d} value={d}>
-                    {DELIMITER_LABEL[d]}
+                    {t(DELIMITER_LABEL[d])}
                   </option>
                 ))}
               </select>
@@ -166,7 +166,7 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
                   remap(e.target.checked, delimiter);
                 }}
               />
-              La primera fila son encabezados
+              {t("La primera fila son encabezados")}
             </label>
           </div>
         )}
@@ -174,11 +174,11 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
           <div className="import-options">
             <label className="inline-check">
               <input type="checkbox" checked={emptyAsNull} onChange={(e) => setEmptyAsNull(e.target.checked)} />
-              Texto vacío = NULL
+              {t("Texto vacío = NULL")}
             </label>
             <label className="inline-check">
               <input type="checkbox" checked={trim} onChange={(e) => setTrim(e.target.checked)} />
-              Quitar espacios al inicio y al final
+              {t("Quitar espacios al inicio y al final")}
             </label>
           </div>
         )}
@@ -203,17 +203,17 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
           <>
             <div className="import-map">
               <div className="import-map-head">
-                <span>Columna de destino</span>
-                <span>Se llena con</span>
+                <span>{t("Columna de destino")}</span>
+                <span>{t("Se llena con")}</span>
               </div>
               {columns.map((c, i) => (
                 <div key={c.name} className="import-map-row">
                   <span title={c.dataType}>
                     {c.name} <span className="muted">{c.dataType}</span>
-                    {!c.nullable && c.default === null && <span className="tag tag-warn">obligatoria</span>}
+                    {!c.nullable && c.default === null && <span className="tag tag-warn">{t("obligatoria")}</span>}
                   </span>
                   <select
-                    aria-label={`Origen de ${c.name}`}
+                    aria-label={t("Origen de {name}", { name: c.name })}
                     value={mapping[i] ?? ""}
                     onChange={(e) =>
                       setMapping((m) => {
@@ -223,7 +223,7 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
                       })
                     }
                   >
-                    <option value="">— no importar (usa el valor por defecto) —</option>
+                    <option value="">{t("— no importar (usa el valor por defecto) —")}</option>
                     {source.headers.map((h, k) => (
                       <option key={k} value={k}>
                         {h}
@@ -261,14 +261,14 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
                 </div>
               </div>
             )}
-            {mappedCount === 0 && <p className="muted">Elige al menos una columna de origen para importar.</p>}
+            {mappedCount === 0 && <p className="muted">{t("Elige al menos una columna de origen para importar.")}</p>}
           </>
         )}
 
         {readOnly && (
           <div className="alert alert-warn">
             <Icon name="lock" size={15} />
-            <span>La sesión está en solo lectura: habilita la escritura para ensayar o importar.</span>
+            <span>{t("La sesión está en solo lectura: habilita la escritura para ensayar o importar.")}</span>
           </div>
         )}
         {error && (
@@ -287,17 +287,17 @@ export default function ImportDialog({ connId, schema, table, columns, readOnly,
         <div className="modal-actions">
           <span className="spacer" />
           <button onClick={onClose} disabled={busy !== null}>
-            Cerrar
+            {t("Cerrar")}
           </button>
           <button
             onClick={() => void run(true)}
             disabled={!canRun || readOnly}
-            title="Inserta todas las filas dentro de una transacción y la revierte"
+            title={t("Inserta todas las filas dentro de una transacción y la revierte")}
           >
-            {busy === "dry" ? "Ensayando…" : "Ensayar (ROLLBACK)"}
+            {busy === "dry" ? t("Ensayando…") : t("Ensayar (ROLLBACK)")}
           </button>
           <button className="danger" onClick={() => void run(false)} disabled={!canRun || readOnly}>
-            {busy === "import" ? "Importando…" : `Importar ${source ? source.rows.length.toLocaleString() : ""} filas`}
+            {busy === "import" ? t("Importando…") : t("Importar {n} filas", { n: source ? source.rows.length.toLocaleString() : "" })}
           </button>
         </div>
       </div>

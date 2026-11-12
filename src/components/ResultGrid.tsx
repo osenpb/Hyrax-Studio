@@ -3,6 +3,7 @@ import type { InsertValue, ResultSet, SortKey } from "../api";
 import { copyText, toJsonRows, toTsv, tryParseJson } from "../clipboard";
 import Icon from "./Icon";
 import RowForm from "./RowForm";
+import { t } from "../i18n";
 
 export const ROW_HEIGHT = 25;
 const OVERSCAN = 15;
@@ -68,7 +69,7 @@ function CellEditor(props: {
     <div className="cell-editor">
       <input
         autoFocus
-        aria-label="Editar celda"
+        aria-label={t("Editar celda")}
         value={text}
         placeholder={props.initial === null ? "NULL" : ""}
         onChange={(e) => setText(e.target.value)}
@@ -83,7 +84,7 @@ function CellEditor(props: {
       />
       <button
         className="small"
-        title="Guardar NULL"
+        title={t("Guardar NULL")}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => finish(null)}
       >
@@ -99,7 +100,7 @@ function InsertCell(props: { value: InsertValue | undefined; column: string; onC
     <td className={"insert-cell" + (v.mode === "null" ? " null" : "")}>
       <div className="cell-editor">
         <input
-          aria-label={`Nuevo ${props.column}`}
+          aria-label={t("Nuevo {name}", { name: props.column })}
           value={v.mode === "value" ? v.value : ""}
           disabled={v.mode === "null"}
           placeholder={v.mode === "null" ? "NULL" : "DEFAULT"}
@@ -198,7 +199,7 @@ export default function ResultGrid({
   const copyRows = async (format: "tsv" | "json") => {
     const picked = selectedList.map((i) => result.rows[i]);
     const text = format === "tsv" ? toTsv(result.columns, picked) : toJsonRows(result.columns, picked);
-    flash((await copyText(text)) ? "Copiado" : "No se pudo copiar");
+    flash((await copyText(text)) ? t("Copiado") : t("No se pudo copiar"));
   };
 
   const selectRow = (index: number, e: React.MouseEvent) => {
@@ -235,7 +236,7 @@ export default function ResultGrid({
         void copyRows("tsv");
       } else if (cell !== undefined && window.getSelection()?.toString() === "") {
         e.preventDefault();
-        void copyText(cell ?? "").then((ok) => flash(ok ? "Copiado" : "No se pudo copiar"));
+        void copyText(cell ?? "").then((ok) => flash(ok ? t("Copiado") : t("No se pudo copiar")));
       }
     } else if (e.key === "Escape") {
       setRows(new Set());
@@ -245,7 +246,7 @@ export default function ResultGrid({
   if (empty) {
     return (
       <div className="grid-empty">
-        {result.affected !== null ? `Comando ejecutado. Filas afectadas: ${result.affected}` : "Sin resultado"}
+        {result.affected !== null ? t("Comando ejecutado. Filas afectadas: {n}", { n: result.affected }) : t("Sin resultado")}
       </div>
     );
   }
@@ -264,28 +265,28 @@ export default function ResultGrid({
       {rows.size > 0 && (
         <div className="selection-bar">
           <strong>
-            {rows.size.toLocaleString()} {rows.size === 1 ? "fila seleccionada" : "filas seleccionadas"}
+            {rows.size.toLocaleString()} {rows.size === 1 ? t("fila seleccionada") : t("filas seleccionadas")}
           </strong>
-          <button className="small" onClick={() => void copyRows("tsv")} title="Copiar como TSV con encabezados (pega bien en Excel)">
-            <Icon name="copy" size={12} /> Copiar TSV
+          <button className="small" onClick={() => void copyRows("tsv")} title={t("Copiar como TSV con encabezados (pega bien en Excel)")}>
+            <Icon name="copy" size={12} /> {t("Copiar TSV")}
           </button>
           <button className="small" onClick={() => void copyRows("json")}>
-            <Icon name="copy" size={12} /> Copiar JSON
+            <Icon name="copy" size={12} /> {t("Copiar JSON")}
           </button>
           {selectedList.length === 1 && (
             <button
               className="small"
               onClick={() => setFormRow(selectedList[0])}
-              title="Ver y editar la fila como formulario: valores largos, JSON y arreglos"
+              title={t("Ver y editar la fila como formulario: valores largos, JSON y arreglos")}
             >
-              <Icon name="form" size={12} /> Ver fila
+              <Icon name="form" size={12} /> {t("Ver fila")}
             </button>
           )}
           {selectionActions?.(selectedList)}
           {copied && <span className="muted">{copied}</span>}
           <span className="spacer" />
           <button className="ghost small" onClick={() => setRows(new Set())}>
-            Quitar selección
+            {t("Quitar selección")}
           </button>
         </div>
       )}
@@ -316,7 +317,7 @@ export default function ResultGrid({
                   <th
                     key={i}
                     className={onSort ? "sortable" : undefined}
-                    title={onSort ? "Clic: ordenar · Mayús+clic: añadir otra columna al orden" : undefined}
+                    title={onSort ? t("Clic: ordenar · Mayús+clic: añadir otra columna al orden") : undefined}
                     onClick={onSort ? (e) => onSort(name, e.shiftKey) : undefined}
                   >
                     {name}
@@ -356,7 +357,7 @@ export default function ResultGrid({
                 <td className="rownum">
                   <button
                     className="ghost icon-btn"
-                    title="Quitar fila nueva"
+                    title={t("Quitar fila nueva")}
                     onClick={() => edit.onRemoveInsert(draft.id)}
                     disabled={!edit.enabled}
                   >
@@ -390,7 +391,7 @@ export default function ResultGrid({
                 >
                   <td
                     className="rownum selectable"
-                    title="Clic: seleccionar fila · Ctrl+clic: añadir · Mayús+clic: rango"
+                    title={t("Clic: seleccionar fila · Ctrl+clic: añadir · Mayús+clic: rango")}
                     onClick={(e) => selectRow(r, e)}
                   >
                     {(rowOffset + r + 1).toLocaleString()}
@@ -426,8 +427,8 @@ export default function ResultGrid({
                         {shown !== null && onFollow && fkColumns?.has(name) && (
                           <button
                             className="fk-follow"
-                            title="Ir al registro relacionado"
-                            aria-label={`Ir al registro relacionado de ${name}`}
+                            title={t("Ir al registro relacionado")}
+                            aria-label={t("Ir al registro relacionado de {name}", { name })}
                             onClick={(e) => {
                               e.stopPropagation();
                               onFollow(r, name);
@@ -450,7 +451,7 @@ export default function ResultGrid({
             )}
           </tbody>
         </table>
-        {result.rows.length === 0 && !edit?.inserts.length && <div className="grid-empty">Sin filas</div>}
+        {result.rows.length === 0 && !edit?.inserts.length && <div className="grid-empty">{t("Sin filas")}</div>}
       </div>
       {selected && (
         <div className="inspector">
@@ -462,7 +463,7 @@ export default function ResultGrid({
                   JSON
                 </button>
                 <button className={jsonRaw ? "active" : ""} onClick={() => setJsonRaw(true)}>
-                  Crudo
+                  {t("Crudo")}
                 </button>
               </div>
             )}
@@ -471,13 +472,13 @@ export default function ResultGrid({
               onClick={() =>
                 void copyText(
                   parsedJson !== undefined && !jsonRaw ? JSON.stringify(parsedJson, null, 2) : (cell ?? ""),
-                ).then((ok) => flash(ok ? "Copiado" : "No se pudo copiar"))
+                ).then((ok) => flash(ok ? t("Copiado") : t("No se pudo copiar")))
               }
               disabled={cell === null || cell === undefined}
             >
-              <Icon name="copy" size={12} /> {copied ?? "Copiar"}
+              <Icon name="copy" size={12} /> {copied ?? t("Copiar")}
             </button>
-            <button className="ghost icon-btn" onClick={() => setSelected(null)} title="Cerrar">
+            <button className="ghost icon-btn" onClick={() => setSelected(null)} title={t("Cerrar")}>
               <Icon name="close" size={13} />
             </button>
           </div>

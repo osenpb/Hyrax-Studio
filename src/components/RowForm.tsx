@@ -2,6 +2,7 @@ import { useState } from "react";
 import { copyText, tryParseJson } from "../clipboard";
 import { parsePgArray } from "../pgarray";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 type Cell = string | null;
 
@@ -67,7 +68,7 @@ function Body(props: Props) {
             try {
               JSON.parse(draft.text);
             } catch (e) {
-              jsonError = e instanceof Error ? e.message : "JSON no válido";
+              jsonError = e instanceof Error ? e.message : t("JSON no válido");
             }
           }
           const isArray = /\[\]$/.test(type ?? "");
@@ -81,7 +82,7 @@ function Body(props: Props) {
                 {draft.isNull && <span className="tag tag-warn">NULL</span>}
                 {jsonLike && !draft.isNull && (
                   <span className={"tag " + (jsonError ? "tag-danger" : "tag-ok")} title={jsonError ?? undefined}>
-                    {jsonError ? "JSON no válido" : "JSON"}
+                    {jsonError ? t("JSON no válido") : "JSON"}
                   </span>
                 )}
               </label>
@@ -98,7 +99,7 @@ function Body(props: Props) {
                 }
               />
               {items && items.length > 0 && (
-                <div className="rowform-array" title="Elementos del arreglo (edita el texto {…} de arriba)">
+                <div className="rowform-array" title={t("Elementos del arreglo (edita el texto {…} de arriba)")}>
                   {items.map((item, k) => (
                     <span key={k} className={"array-item" + (item === null ? " null" : "")}>
                       {item === null ? "NULL" : item}
@@ -117,21 +118,21 @@ function Body(props: Props) {
                   }
                   disabled={draft.isNull}
                 >
-                  <Icon name="copy" size={11} /> {copied === i ? "Copiado" : "Copiar"}
+                  <Icon name="copy" size={11} /> {copied === i ? t("Copiado") : t("Copiar")}
                 </button>
                 {canEdit && (
                   <>
                     {jsonLike && !jsonError && !draft.isNull && draft.text.trim() !== "" && (
                       <button
                         className="small ghost"
-                        title="Compactar el JSON en una sola línea"
+                        title={t("Compactar el JSON en una sola línea")}
                         onClick={() =>
                           setDrafts((all) =>
                             all.map((d, j) => (j === i ? { ...d, text: JSON.stringify(JSON.parse(d.text)) } : d)),
                           )
                         }
                       >
-                        Compactar
+                        {t("Compactar")}
                       </button>
                     )}
                     <button
@@ -151,11 +152,11 @@ function Body(props: Props) {
       </div>
       {editable && (
         <div className="modal-actions">
-          <span className="muted">Los cambios se añaden a los pendientes; no se guarda nada en la base hasta aplicarlos.</span>
+          <span className="muted">{t("Los cambios se añaden a los pendientes; no se guarda nada en la base hasta aplicarlos.")}</span>
           <span className="spacer" />
-          <button onClick={props.onClose}>Cancelar</button>
+          <button onClick={props.onClose}>{t("Cancelar")}</button>
           <button className="primary" disabled={!dirty} onClick={apply}>
-            Añadir a cambios pendientes
+            {t("Añadir a cambios pendientes")}
           </button>
         </div>
       )}
@@ -167,12 +168,12 @@ export default function RowForm(props: Props) {
   const { index, rows } = props;
   return (
     <div className="modal-backdrop" onMouseDown={props.onClose}>
-      <div className="modal rowform" role="dialog" aria-label="Fila como formulario" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal rowform" role="dialog" aria-label={t("Fila como formulario")} onMouseDown={(e) => e.stopPropagation()}>
         <div className="rowform-head">
           <h2>Fila {props.rowNumber.toLocaleString()}</h2>
           <button
             className="icon-btn"
-            title="Fila anterior"
+            title={t("Fila anterior")}
             disabled={index === 0}
             onClick={() => props.onNavigate(index - 1)}
           >
@@ -180,14 +181,14 @@ export default function RowForm(props: Props) {
           </button>
           <button
             className="icon-btn"
-            title="Fila siguiente"
+            title={t("Fila siguiente")}
             disabled={index >= rows.length - 1}
             onClick={() => props.onNavigate(index + 1)}
           >
             <Icon name="next" size={14} />
           </button>
           <span className="spacer" />
-          <button className="ghost icon-btn" onClick={props.onClose} title="Cerrar">
+          <button className="ghost icon-btn" onClick={props.onClose} title={t("Cerrar")}>
             <Icon name="close" size={14} />
           </button>
         </div>
