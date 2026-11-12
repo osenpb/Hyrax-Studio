@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellText, columnsOf, describe as classify, isContainer } from "./ejson";
+import { cellText, columnsOf, describe as classify, formatJson, isContainer, toRelaxed } from "./ejson";
 
 describe("describe (tipos BSON en JSON extendido canónico)", () => {
   it("reconoce los tipos numéricos y de texto", () => {
@@ -65,5 +65,44 @@ describe("columnsOf", () => {
     const wide = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`c${i}`, i]));
     expect(columnsOf([wide], 10)).toHaveLength(10);
     expect(columnsOf([])).toEqual([]);
+  });
+});
+
+describe("toRelaxed / formatJson", () => {
+  it("los números normales salen como números y los tipos sin equivalente en JSON se conservan", () => {
+    const doc = {
+      _id: { $oid: "507f1f77bcf86cd799439011" },
+      n: { $numberInt: "5" },
+      big: { $numberLong: "5" },
+      x: { $numberDouble: "1.5" },
+      price: { $numberDecimal: "12.50" },
+      at: { $date: { $numberLong: "1772323200000" } },
+      tags: [{ $numberInt: "1" }, "a"],
+      nested: { k: { $numberInt: "2" } },
+    };
+    expect(toRelaxed(doc)).toEqual({
+      _id: { $oid: "507f1f77bcf86cd799439011" },
+      n: 5,
+      big: 5,
+      x: 1.5,
+      price: { $numberDecimal: "12.50" },
+      at: { $date: "2026-03-01T00:00:00.000Z" },
+      tags: [1, "a"],
+      nested: { k: 2 },
+    });
+  });
+
+  it("no pierde datos: un Long fuera del rango seguro, NaN e Infinity conservan su envoltorio", () => {
+    expect(toRelaxed({ $numberLong: "9007199254740993" })).toEqual({ $numberLong: "9007199254740993" });
+    expect(toRelaxed({ $numberDouble: "NaN" })).toEqual({ $numberDouble: "NaN" });
+    expect(toRelaxed({ $numberDouble: "Infinity" })).toEqual({ $numberDouble: "Infinity" });
+  });
+
+  it("formatJson da texto con sangría y no toca los valores simples", () => {
+    expect(formatJson({ a: { $numberInt: "1" }, b: "x", c: null, d: true })).toBe(
+      '{\n  "a": 1,\n  "b": "x",\n  "c": null,\n  "d": true\n}',
+    );
+    expect(toRelaxed("hola")).toBe("hola");
+    expect(toRelaxed(null)).toBeNull();
   });
 });

@@ -145,3 +145,36 @@ export function columnsOf(docs: Record<string, unknown>[], max = 60): string[] {
   const rest = order.filter((k) => k !== "_id");
   return (seen.has("_id") ? ["_id", ...rest] : rest).slice(0, max);
 }
+
+/**
+ * JSON extendido «relajado» (el que muestra Compass en su vista JSON): los números normales salen como
+ * números y solo quedan envueltos los tipos que JSON no tiene (ObjectId, Decimal128, Binary, fechas…).
+ * Un Long fuera del rango seguro de JavaScript, y NaN/Infinity, conservan su envoltorio para no perder datos.
+ */
+export function toRelaxed(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toRelaxed);
+  if (!isPlainObject(value)) return value;
+  const keys = Object.keys(value);
+  if (keys.length === 1) {
+    const [key] = keys;
+    const inner = value[key];
+    if (key === "$numberInt") return Number(inner);
+    if (key === "$numberLong") {
+      const n = Number(inner);
+      return Number.isSafeInteger(n) ? n : value;
+    }
+    if (key === "$numberDouble") {
+      const n = Number(inner);
+      return Number.isFinite(n) ? n : value;
+    }
+    if (key === "$date" && isPlainObject(inner) && typeof inner.$numberLong === "string") {
+      return { $date: isoFromMillis(inner.$numberLong) };
+    }
+  }
+  return Object.fromEntries(keys.map((k) => [k, toRelaxed(value[k])]));
+}
+
+/** Documento como texto JSON con sangría (extendido relajado). */
+export function formatJson(value: unknown): string {
+  return JSON.stringify(toRelaxed(value), null, 2);
+}
