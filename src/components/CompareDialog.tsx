@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { ResultSet } from "../api";
 import { diffResults, type DiffKind } from "../compare";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 export interface Pin {
   id: number;
@@ -49,11 +50,11 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal compare-dialog" role="dialog" aria-label="Comparar resultados" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal compare-dialog" role="dialog" aria-label={t("Comparar resultados")} onMouseDown={(e) => e.stopPropagation()}>
         <div className="rowform-head">
-          <h2>Comparar resultados</h2>
+          <h2>{t("Comparar resultados")}</h2>
           <span className="spacer" />
-          <button className="ghost icon-btn" onClick={onClose} title="Cerrar">
+          <button className="ghost icon-btn" onClick={onClose} title={t("Cerrar")}>
             <Icon name="close" size={14} />
           </button>
         </div>
@@ -69,8 +70,8 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
           <div className="compare-pickers">
             {(
               [
-                ["A (referencia)", aId, setAId],
-                ["B (nuevo)", bId, setBId],
+                [t("A (referencia)"), aId, setAId],
+                [t("B (nuevo)"), bId, setBId],
               ] as const
             ).map(([label, value, set]) => (
               <label key={label} className="inline-select">
@@ -78,7 +79,7 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
                 <select aria-label={label} value={value ?? ""} onChange={(e) => set(Number(e.target.value))}>
                   {pins.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.label} ({p.result.rows.length.toLocaleString()} filas)
+                      {p.label} ({p.result.rows.length.toLocaleString()} {t("filas")})
                     </option>
                   ))}
                 </select>
@@ -90,7 +91,7 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
         {a && b && (
           <>
             <div className="compare-keys">
-              <span className="muted">Columnas clave (para emparejar filas; sin clave se comparan filas completas):</span>
+              <span className="muted">{t("Columnas clave (para emparejar filas; sin clave se comparan filas completas):")}</span>
               {common.map((c) => (
                 <label key={c} className="inline-check">
                   <input
@@ -101,21 +102,21 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
                   {c}
                 </label>
               ))}
-              {common.length === 0 && <span className="alert-inline">Los dos resultados no tienen columnas en común.</span>}
+              {common.length === 0 && <span className="alert-inline">{t("Los dos resultados no tienen columnas en común.")}</span>}
             </div>
 
             {partial && (
               <div className="alert alert-warn">
                 <Icon name="alert" size={15} />
-                <span>Alguno de los resultados está truncado: la comparación solo cubre las filas que se cargaron.</span>
+                <span>{t("Alguno de los resultados está truncado: la comparación solo cubre las filas que se cargaron.")}</span>
               </div>
             )}
             {diff && (diff.onlyInA.length > 0 || diff.onlyInB.length > 0) && (
               <div className="alert alert-warn">
                 <Icon name="alert" size={15} />
                 <span>
-                  Columnas que no se comparan:{" "}
-                  {[...diff.onlyInA.map((c) => `${c} (solo A)`), ...diff.onlyInB.map((c) => `${c} (solo B)`)].join(", ")}
+                  {t("Columnas que no se comparan:")}{" "}
+                  {[...diff.onlyInA.map((c) => `${c} (${t("solo A")})`), ...diff.onlyInB.map((c) => `${c} (${t("solo B")})`)].join(", ")}
                 </span>
               </div>
             )}
@@ -123,8 +124,9 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
               <div className="alert alert-warn">
                 <Icon name="alert" size={15} />
                 <span>
-                  Hay {diff.duplicateKeys} claves repetidas: la clave elegida no identifica cada fila de forma única y
-                  el resultado puede ser engañoso.
+                  {t("Hay {n} claves repetidas: la clave elegida no identifica cada fila de forma única y el resultado puede ser engañoso.", {
+                    n: diff.duplicateKeys,
+                  })}
                 </span>
               </div>
             )}
@@ -139,7 +141,7 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
                         checked={show[kind]}
                         onChange={(e) => setShow((s) => ({ ...s, [kind]: e.target.checked }))}
                       />
-                      {diff.counts[kind].toLocaleString()} {LABEL[kind]}
+                      {diff.counts[kind].toLocaleString()} {t(LABEL[kind])}
                     </label>
                   ))}
                 </div>
@@ -183,9 +185,9 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
                       })}
                     </tbody>
                   </table>
-                  {visible.length === 0 && <div className="grid-empty">No hay filas con los filtros elegidos.</div>}
+                  {visible.length === 0 && <div className="grid-empty">{t("No hay filas con los filtros elegidos.")}</div>}
                   {visible.length > SHOW_LIMIT && (
-                    <div className="grid-empty">Se muestran las primeras {SHOW_LIMIT.toLocaleString()} de {visible.length.toLocaleString()} filas.</div>
+                    <div className="grid-empty">{t("Se muestran las primeras {n} de {total} filas.", { n: SHOW_LIMIT.toLocaleString(), total: visible.length.toLocaleString() })}</div>
                   )}
                 </div>
               </>
@@ -195,11 +197,11 @@ export default function CompareDialog({ pins, onRemove, onClose }: Props) {
 
         {pins.length > 0 && (
           <div className="compare-pins">
-            <span className="muted">Resultados fijados:</span>
+            <span className="muted">{t("Resultados fijados:")}</span>
             {pins.map((p) => (
               <span key={p.id} className="pin-chip">
                 {p.label}
-                <button className="ghost icon-btn" title="Quitar" onClick={() => onRemove(p.id)}>
+                <button className="ghost icon-btn" title={t("Quitar")} onClick={() => onRemove(p.id)}>
                   <Icon name="close" size={10} />
                 </button>
               </span>

@@ -3,6 +3,7 @@ import { api, errorText, type ObjectKind } from "../api";
 import { copyText } from "../clipboard";
 import SqlEditor, { type SqlEditorHandle } from "./SqlEditor";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   connId: string;
@@ -50,13 +51,13 @@ export default function DdlView({ connId, schema, name, kind, oid, onOpenInSql }
         </span>
         <span className="spacer" />
         <button onClick={() => void copy()} disabled={text === null}>
-          <Icon name="copy" size={12} /> {copied ? "Copiado" : "Copiar"}
+          <Icon name="copy" size={12} /> {copied ? t("Copiado") : t("Copiar")}
         </button>
         <button onClick={() => text !== null && onOpenInSql(text)} disabled={text === null}>
-          <Icon name="terminal" size={12} /> Abrir en editor SQL
+          <Icon name="terminal" size={12} /> {t("Abrir en editor SQL")}
         </button>
         <button onClick={() => setReload((r) => r + 1)}>
-          <Icon name="refresh" size={12} /> Refrescar
+          <Icon name="refresh" size={12} /> {t("Refrescar")}
         </button>
       </div>
       {error && (
@@ -65,7 +66,7 @@ export default function DdlView({ connId, schema, name, kind, oid, onOpenInSql }
           <span>{error}</span>
         </div>
       )}
-      {text === null && !error && <div className="grid-empty">Cargando…</div>}
+      {text === null && !error && <div className="grid-empty">{t("Cargando…")}</div>}
       <div className="ddl-editor" hidden={text === null}>
         <SqlEditor ref={editor} initialValue="" readOnly fill onRun={() => undefined} onFormat={() => undefined} />
       </div>

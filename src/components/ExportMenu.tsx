@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ExportFormat } from "../api";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   disabled?: boolean;
@@ -28,8 +29,8 @@ export default function ExportMenu({ disabled, onExport }: Props) {
 
   return (
     <div className="menu-wrap" ref={box}>
-      <button onClick={() => setOpen((o) => !o)} disabled={disabled} title="Exportar el resultado a un archivo">
-        <Icon name="download" size={13} /> Exportar
+      <button onClick={() => setOpen((o) => !o)} disabled={disabled} title={t("Exportar el resultado a un archivo")}>
+        <Icon name="download" size={13} /> {t("Exportar")}
       </button>
       {open && (
         <div className="menu">
@@ -43,7 +44,7 @@ export default function ExportMenu({ disabled, onExport }: Props) {
               }}
             >
               <strong>{o.label}</strong>
-              <small>{o.hint}</small>
+              <small>{t(o.hint)}</small>
             </button>
           ))}
         </div>

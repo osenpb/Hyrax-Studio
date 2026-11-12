@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t } from "../i18n";
 
 interface Props {
   names: string[];
@@ -23,17 +24,16 @@ export default function ParamsDialog({ names, initial, onSubmit, onCancel }: Pro
       <form
         className="modal"
         role="dialog"
-        aria-label="Parámetros"
+        aria-label={t("Parámetros")}
         onMouseDown={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        <h2>Parámetros</h2>
+        <h2>{t("Parámetros")}</h2>
         <p className="muted">
-          La consulta usa parámetros con nombre. Cada valor se envía como texto literal escapado; PostgreSQL lo
-          convierte al tipo de la columna.
+          {t("La consulta usa parámetros con nombre. Cada valor se envía como texto literal escapado; PostgreSQL lo convierte al tipo de la columna.")}
         </p>
         <div className="param-grid">
           {names.map((name, i) => (
@@ -61,10 +61,10 @@ export default function ParamsDialog({ names, initial, onSubmit, onCancel }: Pro
         <div className="modal-actions">
           <span className="spacer" />
           <button type="button" onClick={onCancel}>
-            Cancelar
+            {t("Cancelar")}
           </button>
           <button type="submit" className="primary">
-            Ejecutar
+            {t("Ejecutar")}
           </button>
         </div>
       </form>

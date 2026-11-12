@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { heaviest, type ParsedPlan, type PlanNode } from "../plan";
+import { t } from "../i18n";
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
@@ -7,10 +8,10 @@ function title(node: PlanNode): string {
   let text = node.type;
   if (node.joinType && node.joinType !== "Inner") text += ` (${node.joinType})`;
   if (node.relation) {
-    text += ` en ${node.relation}`;
+    text += ` ${t("en")} ${node.relation}`;
     if (node.alias && node.alias !== node.relation) text += ` ${node.alias}`;
   }
-  if (node.index) text += ` con ${node.index}`;
+  if (node.index) text += ` ${t("con")} ${node.index}`;
   return text;
 }
 
@@ -25,30 +26,30 @@ function Node({ node, depth, analyzed }: { node: PlanNode; depth: number; analyz
           <button
             className={"ghost icon-btn plan-toggle" + (hasChildren ? "" : " hidden")}
             onClick={() => setOpen((o) => !o)}
-            title={open ? "Contraer" : "Expandir"}
-            aria-label={open ? "Contraer nodo" : "Expandir nodo"}
+            title={open ? t("Contraer") : t("Expandir")}
+            aria-label={open ? t("Contraer nodo") : t("Expandir nodo")}
           >
             {open ? "▾" : "▸"}
           </button>
           <strong className="plan-title">{title(node)}</strong>
-          <span className="plan-bar" title={`${(node.share * 100).toFixed(1)}% del total`}>
+          <span className="plan-bar" title={t("{pct}% del total", { pct: (node.share * 100).toFixed(1) })}>
             <span style={{ width: `${Math.max(node.share * 100, node.share > 0 ? 2 : 0)}%` }} />
           </span>
           <span className="plan-pct">{(node.share * 100).toFixed(node.share >= 0.1 ? 0 : 1)}%</span>
         </div>
         <div className="plan-meta">
-          <span>costo {fmt(node.startupCost)}..{fmt(node.totalCost)}</span>
-          <span>filas est. {fmt(node.planRows)}</span>
+          <span>{t("costo")} {fmt(node.startupCost)}..{fmt(node.totalCost)}</span>
+          <span>{t("filas est.")} {fmt(node.planRows)}</span>
           {analyzed && node.actualRows !== null && (
             <span>
-              filas reales {fmt(node.actualRows)}
-              {node.loops !== null && node.loops > 1 ? ` × ${fmt(node.loops)} vueltas` : ""}
+              {t("filas reales")} {fmt(node.actualRows)}
+              {node.loops !== null && node.loops > 1 ? ` × ${fmt(node.loops)} ${t("vueltas")}` : ""}
             </span>
           )}
           {analyzed && node.actualTime !== null && <span>{fmt(node.actualTime)} ms</span>}
           {node.misestimate !== null && (
-            <span className="plan-warn" title="La estimación de filas del planificador se desvió mucho de la realidad: suele indicar estadísticas desactualizadas (ANALYZE)">
-              estimación errada ×{fmt(node.misestimate)}
+            <span className="plan-warn" title={t("La estimación de filas del planificador se desvió mucho de la realidad: suele indicar estadísticas desactualizadas (ANALYZE)")}>
+              {t("estimación errada")} ×{fmt(node.misestimate)}
             </span>
           )}
         </div>
@@ -71,18 +72,18 @@ export default function PlanTree({ plan, raw }: { plan: ParsedPlan; raw: string 
       <div className="plan-summary">
         <div className="segmented small-seg">
           <button className={mode === "tree" ? "active" : ""} onClick={() => setMode("tree")}>
-            Árbol
+            {t("Árbol")}
           </button>
           <button className={mode === "json" ? "active" : ""} onClick={() => setMode("json")}>
             JSON
           </button>
         </div>
-        {plan.planningTime !== null && <span className="muted">Planificación {fmt(plan.planningTime)} ms</span>}
-        {plan.executionTime !== null && <span className="muted">Ejecución {fmt(plan.executionTime)} ms</span>}
-        {!plan.analyzed && <span className="muted">Costos estimados (no se ejecutó la consulta)</span>}
+        {plan.planningTime !== null && <span className="muted">{t("Planificación")} {fmt(plan.planningTime)} ms</span>}
+        {plan.executionTime !== null && <span className="muted">{t("Ejecución")} {fmt(plan.executionTime)} ms</span>}
+        {!plan.analyzed && <span className="muted">{t("Costos estimados (no se ejecutó la consulta)")}</span>}
         {worst && worst.share > 0 && (
           <span className="plan-worst">
-            Nodo más costoso: <strong>{title(worst)}</strong> ({(worst.share * 100).toFixed(0)}%)
+            {t("Nodo más costoso:")} <strong>{title(worst)}</strong> ({(worst.share * 100).toFixed(0)}%)
           </span>
         )}
       </div>

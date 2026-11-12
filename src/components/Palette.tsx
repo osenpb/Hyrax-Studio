@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 export interface PaletteItem {
   key: string;
@@ -68,7 +69,7 @@ export default function Palette({ title, placeholder, search, version, status, h
         </div>
         <div className="palette-list" ref={list} role="listbox">
           {status && <div className="palette-empty">{status}</div>}
-          {!status && items.length === 0 && <div className="palette-empty">Sin coincidencias</div>}
+          {!status && items.length === 0 && <div className="palette-empty">{t("Sin coincidencias")}</div>}
           {items.map((item, i) => (
             <div
               key={item.key}

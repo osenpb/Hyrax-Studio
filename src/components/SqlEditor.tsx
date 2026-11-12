@@ -28,6 +28,7 @@ import { tags as t } from "@lezer/highlight";
 import type { ForeignKey, ObjectRef } from "../api";
 import { joinSuggestions } from "../joins";
 import { SNIPPETS } from "../snippets";
+import { getLang, useLang } from "../i18n";
 import { splitStatements, statementAt } from "../statements";
 
 export interface EditorExtras {
@@ -119,7 +120,7 @@ const theme = EditorView.theme({
   ".cm-current-stmt": { boxShadow: "inset 2px 0 0 var(--accent)" },
 });
 
-const PHRASES: Record<string, string> = {
+const PHRASES_ES: Record<string, string> = {
   Find: "Buscar",
   Replace: "Reemplazar",
   next: "siguiente",
@@ -136,6 +137,8 @@ const PHRASES: Record<string, string> = {
   "current match": "coincidencia actual",
   "on line": "en la línea",
 };
+
+const phrasesFor = () => (getLang() === "es" ? PHRASES_ES : {});
 
 const MAX_HIGHLIGHT_CHARS = 200_000;
 
@@ -235,6 +238,8 @@ const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
   const extras = useRef(new Compartment());
+  const phrases = useRef(new Compartment());
+  const lang = useLang();
   const runRef = useRef(onRun);
   const formatRef = useRef(onFormat);
   const saveRef = useRef(onSave);
@@ -282,7 +287,7 @@ const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
               },
             ]),
           ),
-          EditorState.phrases.of(PHRASES),
+          phrases.current.of(EditorState.phrases.of(phrasesFor())),
           EditorState.readOnly.of(readOnly),
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -317,6 +322,11 @@ const SqlEditor = forwardRef<SqlEditorHandle, Props>(function SqlEditor(
       view.current = null;
     };
   }, []);
+
+  // Si cambia el idioma, el panel de buscar y reemplazar cambia sin recrear el editor ni perder el texto.
+  useEffect(() => {
+    view.current?.dispatch({ effects: phrases.current.reconfigure(EditorState.phrases.of(phrasesFor())) });
+  }, [lang]);
 
   useImperativeHandle(ref, () => ({
     getRunnable: () => {
