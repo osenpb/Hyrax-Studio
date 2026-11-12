@@ -196,6 +196,20 @@ mod tests {
     }
 
     #[test]
+    fn key_order_is_preserved_when_reading_and_writing() {
+        // El orden de un sort con varios campos importa: {"b":1,"a":-1} no es lo mismo que {"a":-1,"b":1}.
+        let sort = parse_document(r#"{"b":1,"a":-1,"c":1}"#, "El orden").unwrap();
+        assert_eq!(sort.keys().map(String::as_str).collect::<Vec<_>>(), ["b", "a", "c"]);
+
+        // Un documento sale en el orden en que MongoDB lo guardó (con _id donde esté), no alfabético.
+        let text = to_canonical(doc! {"zeta": 1, "_id": 2, "alfa": 3});
+        let (z, id, a) = (text.find("zeta").unwrap(), text.find("_id").unwrap(), text.find("alfa").unwrap());
+        assert!(z < id && id < a, "{text}");
+        let first = to_canonical(doc! {"_id": 1, "alfa": 2, "zeta": 3});
+        assert!(first.find("_id").unwrap() < first.find("alfa").unwrap(), "{first}");
+    }
+
+    #[test]
     fn canonical_output_keeps_the_bson_types() {
         let id = ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap();
         let text = to_canonical(doc! {"_id": id, "n": 5_i32, "big": 5_i64, "x": 1.5});
