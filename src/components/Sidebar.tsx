@@ -59,6 +59,8 @@ interface Props {
   onSelectConn: (id: string) => void;
   onConnect: (profileId: string, database: string, key: string) => Promise<boolean>;
   onDisconnect: (profileId: string) => void;
+  /** Vuelve a abrir las sesiones con las credenciales guardadas; devuelve false si falló. */
+  onReconnect: (profileId: string) => Promise<boolean>;
   onNew: () => void;
   onEdit: (profile: ConnectionProfile) => void;
   onDelete: (profile: ConnectionProfile) => void;
@@ -506,6 +508,7 @@ export default function Sidebar(props: Props) {
                 connected={!!props.mongoConnected?.[profile.id]}
                 onConnect={props.onMongoConnect}
                 onDisconnect={props.onDisconnect}
+                onReconnect={props.onReconnect}
                 onEdit={props.onEdit}
                 onDelete={props.onDelete}
                 onOpenCollection={props.onOpenCollection}
@@ -545,6 +548,15 @@ export default function Sidebar(props: Props) {
                           title={t("Recargar bases de datos")}
                           icon="refresh"
                           onClick={() => firstSession && loadDatabases(profile, firstSession)}
+                        />
+                        <ActionButton
+                          title={t("Reconectar (usa las credenciales guardadas)")}
+                          icon="plug"
+                          onClick={() =>
+                            withBusy(id, async () => {
+                              if ((await props.onReconnect(id)) && firstSession) await loadDatabases(profile, firstSession);
+                            })
+                          }
                         />
                         <ActionButton title={t("Desconectar")} icon="power" onClick={() => props.onDisconnect(id)} />
                       </>

@@ -9,6 +9,8 @@ interface Props {
   /** Abre la sesión; devuelve false si falló (el aviso lo muestra quien llama). */
   onConnect: (profileId: string) => Promise<boolean>;
   onDisconnect: (profileId: string) => void;
+  /** Abre la sesión de nuevo con las credenciales guardadas; devuelve false si falló. */
+  onReconnect: (profileId: string) => Promise<boolean>;
   onEdit: (profile: ConnectionProfile) => void;
   onDelete: (profile: ConnectionProfile) => void;
   onOpenCollection: (profileId: string, database: string, collection: string, kind: MongoCollection["kind"]) => void;
@@ -135,6 +137,18 @@ export default function MongoNode(props: Props) {
             {connected && (
               <>
                 <ActionButton title={t("Recargar bases de datos")} icon="refresh" onClick={() => void loadDatabases()} />
+                <ActionButton
+                  title={t("Reconectar (usa las credenciales guardadas)")}
+                  icon="plug"
+                  onClick={() => {
+                    if (busy) return;
+                    setBusy(true);
+                    void props
+                      .onReconnect(id)
+                      .then((ok) => (ok ? loadDatabases() : undefined))
+                      .finally(() => setBusy(false));
+                  }}
+                />
                 <ActionButton title={t("Desconectar")} icon="power" onClick={() => props.onDisconnect(id)} />
               </>
             )}

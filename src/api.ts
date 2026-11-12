@@ -70,6 +70,12 @@ export interface SessionInfo {
   readOnly: boolean;
 }
 
+export interface ReconnectResult {
+  /** Sesiones abiertas de nuevo; la clave es la misma de antes. */
+  reconnected: { key: string; info: SessionInfo }[];
+  failed: { database: string; error: string }[];
+}
+
 export interface SchemaInfo {
   name: string;
   isSystem: boolean;
@@ -342,6 +348,7 @@ export const api = {
   cancelQuery: (id: string) => invoke<void>("cancel_query", { id }),
   disconnect: (id: string) => invoke<void>("disconnect", { id }),
   disconnectProfile: (id: string) => invoke<void>("disconnect_profile", { id }),
+  reconnectProfile: (id: string) => invoke<ReconnectResult>("reconnect_profile", { id }),
   listDatabases: (id: string) => invoke<string[]>("list_databases", { id }),
   completionSchema: (id: string) => invoke<CompletionTable[]>("completion_schema", { id }),
   listSchemas: (id: string) => invoke<SchemaInfo[]>("list_schemas", { id }),

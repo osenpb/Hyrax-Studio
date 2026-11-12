@@ -152,6 +152,31 @@ export default function App() {
     }
   };
 
+  /** Abre de nuevo las sesiones de una conexión con las credenciales guardadas, sin cerrar las pestañas. */
+  const reconnect = async (profileId: string) => {
+    const profile = profiles.find((p) => p.id === profileId);
+    if (profile?.engine === "mongodb") return connectMongo(profileId);
+    setBanner(null);
+    try {
+      const result = await api.reconnectProfile(profileId);
+      setConnected((prev) => {
+        const next = { ...prev };
+        for (const s of result.reconnected) next[s.key] = s.info;
+        return next;
+      });
+      markRecent(profileId);
+      const failure = result.failed[0];
+      if (failure) {
+        setBanner(tr("No se pudo reconectar {name}: {error}", { name: `${profile?.name ?? profileId} / ${failure.database}`, error: failure.error }));
+        return false;
+      }
+      return true;
+    } catch (e) {
+      setBanner(tr("No se pudo reconectar: {error}", { error: errorText(e) }));
+      return false;
+    }
+  };
+
   const connectMongo = async (profileId: string) => {
     setBanner(null);
     try {
@@ -482,6 +507,7 @@ export default function App() {
         onSelectConn={setSelectedConn}
         onConnect={connect}
         onDisconnect={disconnect}
+        onReconnect={reconnect}
         onNew={() => setDialog({ profile: null })}
         openRequest={openRequest}
         mongoConnected={Object.fromEntries(Object.keys(mongoConnected).map((k) => [k, true]))}

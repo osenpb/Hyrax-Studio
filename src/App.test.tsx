@@ -22,6 +22,7 @@ let mongoConnectError = "";
 let mongoFindError = "";
 let mongoSystemDbs = false;
 let boolColumn = false;
+let reconnectFails = false;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -160,6 +161,10 @@ vi.mock("@tauri-apps/api/core", () => ({
         return 2;
       case "connect_profile":
         return { version: "PostgreSQL 16", readOnly: readOnlyState };
+      case "reconnect_profile":
+        return reconnectFails
+          ? { reconnected: [], failed: [{ database: "erp_db", error: "connection refused" }] }
+          : { reconnected: [{ key: "p1::erp_db", info: { version: "PostgreSQL 16", readOnly: true } }], failed: [] };
       case "set_read_only":
         readOnlyState = args.enabled as boolean;
         return readOnlyState;
@@ -304,6 +309,7 @@ beforeEach(() => {
   mongoFindError = "";
   mongoSystemDbs = false;
   boolColumn = false;
+  reconnectFails = false;
   localStorage.removeItem("hyrax-recent");
   calls.length = 0;
   failDatabases = false;
@@ -2028,6 +2034,43 @@ describe("MongoDB: explorar", () => {
     await user.click(inSidebar().getAllByTitle("Desconectar")[1]);
     await waitFor(() => expect(inSidebar().queryByText("ventas")).toBeNull());
     expect(inSidebar().getByText("erp_db")).toBeTruthy();
+  });
+
+  it("reconectar vuelve a abrir la sesión de PostgreSQL sin cerrar el árbol", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    await inSidebar().findByText("erp_db");
+
+    await user.click(inSidebar().getByTitle("Reconectar (usa las credenciales guardadas)"));
+    await waitFor(() => expect(calls.some((c) => c.cmd === "reconnect_profile" && c.args.id === "p1")).toBe(true));
+    expect(inSidebar().getByText("erp_db")).toBeTruthy();
+    expect(calls.filter((c) => c.cmd === "connect_profile")).toHaveLength(1);
+    expect(screen.queryByText(/No se pudo reconectar/)).toBeNull();
+  });
+
+  it("si reconectar falla se avisa y el árbol queda como estaba", async () => {
+    reconnectFails = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    await inSidebar().findByText("erp_db");
+
+    await user.click(inSidebar().getByTitle("Reconectar (usa las credenciales guardadas)"));
+    expect(await screen.findByText(/No se pudo reconectar dev_erp \/ erp_db: connection refused/)).toBeTruthy();
+    expect(inSidebar().getByText("erp_db")).toBeTruthy();
+  });
+
+  it("reconectar una conexión de MongoDB abre la sesión de nuevo y recarga las bases", async () => {
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
+    await inSidebar().findByText("ventas");
+
+    await user.click(inSidebar().getByTitle("Reconectar (usa las credenciales guardadas)"));
+    await waitFor(() => expect(calls.filter((c) => c.cmd === "mongo_connect")).toHaveLength(2));
+    expect(await inSidebar().findByText("ventas")).toBeTruthy();
   });
 
   it("desconectar cierra el árbol de la conexión", async () => {

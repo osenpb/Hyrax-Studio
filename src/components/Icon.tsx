@@ -69,6 +69,7 @@ const PATHS: Record<string, ReactNode> = {
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />,
   terminal: <path d="M5 8l4 4-4 4M12 17h7" />,
   power: <path d="M12 3v9M6.5 6.5a8 8 0 1 0 11 0" />,
+  plug: <path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" />,
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />
