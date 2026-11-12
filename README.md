@@ -10,7 +10,7 @@
   Rust + Tauri 2 on the backend, React + TypeScript on the front end.
 </p>
 
-> **Status: early version (0.1).** It is used daily in development, but it has not been tested against a real production cluster or outside Windows. Read [Current limitations](#current-limitations) before relying on it. **The interface is currently in Spanish.**
+> **Status: early version (0.1).** It is used daily in development, but it has not been tested against a real production cluster or outside Windows. Read [Current limitations](#current-limitations) before relying on it.
 
 ## Why Hyrax Studio
 
@@ -56,7 +56,7 @@ DataGrip and DBeaver do a lot, sometimes too much, and they are heavy. Hyrax Stu
 - Warnings for `DELETE`/`UPDATE` without `WHERE`, `DROP` and `TRUNCATE`, and a "Test (ROLLBACK)" button to see the effect without saving anything.
 - Details and residual risks in [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md).
 
-Dark, light or automatic theme. Inter and JetBrains Mono fonts are bundled with the app.
+**English and Spanish** interface (English by default): the gear icon in the sidebar opens Settings, where you change the language, the theme and erase saved data. The change applies instantly and is remembered on the device. Dark, light or automatic theme. Inter and JetBrains Mono fonts are bundled with the app.
 
 ## Current limitations
 
@@ -106,7 +106,7 @@ The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 Connections are stored in your user data folder (`%APPDATA%\dev.osen.hyrax\profiles.json`), and passwords and SSH keys in the Windows Credential Manager. **None of that ships inside the installer**: a fresh install on another machine or user account starts empty. On a machine where you already used the app, the installed version reads those same connections, and uninstalling does not remove them.
 
-To leave the app as if freshly installed: `Ctrl+Shift+A` → "Borrar conexiones y contraseñas guardadas…" (you must type `BORRAR`). It removes the connections, their passwords and SSH keys, and optionally the query history. It does not touch any database.
+To leave the app as if freshly installed: Settings → "Erase saved connections and passwords…" (or `Ctrl+Shift+A` → the same command). You must type `ERASE` (`BORRAR` in the Spanish interface). It removes the connections, their passwords and SSH keys, and optionally the query history. It does not touch any database.
 
 ## Run from source
 

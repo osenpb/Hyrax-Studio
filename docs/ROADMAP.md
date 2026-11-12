@@ -49,6 +49,12 @@ Status: ✅ done · 🟡 partial · ⬜ pending
 - 🟡 Installer (built unsigned); ⬜ code signing and automatic updates.
 - Security review before every release.
 
+## Interface language
+
+- ✅ English (default) and Spanish, switchable in Settings and applied instantly; backend errors translated; regression tests for both languages.
+- ⬜ Other languages: add a dictionary next to `src/i18n/en.ts` and the template list in `src/i18n/backend.ts`.
+- ⬜ Text that comes from the database or the driver (server errors, PostgreSQL messages) is shown as the server sends it.
+
 ## MongoDB (in progress)
 
 - ✅ **M0 (2026-11-11):** `engine` field, start screen, one connection form per engine, MongoDB connection test with the official driver.

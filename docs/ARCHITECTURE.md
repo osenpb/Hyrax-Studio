@@ -96,6 +96,14 @@ React (src/)  ──invoke──▶  Tauri commands (src-tauri/src/commands.rs)
 
 **Virtualized grid.** With more than 150 rows only the visible ones plus a margin are drawn. To make that computable, rows are 25 px tall and each column's width is fixed once per result (from the content, capped at 440 px); without that, widths would jump while scrolling. Selection, copying and editing work on the real row indexes, not on the drawn rows.
 
+## Language
+
+**The original Spanish text is the translation key.** `t("Nueva conexión")` returns the same text in Spanish and its English translation in English (`src/i18n/en.ts`); `{name}` markers are replaced from the parameters. A text without a translation falls back to Spanish, so translating in stages never leaves a blank. The language lives in `localStorage` (`hyrax-lang`), defaults to **English**, and is changed in Settings; `useLang()` re-renders the app when it changes, with no reload. Module-level constants keep the Spanish text and are translated when drawn (never at import time), and the CodeMirror search panel is switched with a compartment so the editor keeps its text.
+
+**Backend errors are translated on the front end.** Rust returns its messages in Spanish; `errorText()` passes them through `src/i18n/backend.ts`, a list of templates (`{}` marks a variable part such as a name or the server's own error, which is kept) applied only in English. A test reads the Rust sources and fails if a user-facing message has no translation, so a new message cannot ship untranslated. The erase confirmation word is `BORRAR` or `ERASE` according to the language, and the backend accepts both.
+
+**Tests start in Spanish** (`src/test-setup.ts`); the English ones ask for it explicitly and check that no Spanish accent or `¿ ¡` is left on screen.
+
 ## SSH tunnel
 
 **Local port forwarding with `russh`.** The tunnel listens on `127.0.0.1` on a random port and forwards to the Postgres host and port as seen from the SSH server. With verified TLS the certificate is still validated against the real host name (the connection goes to `127.0.0.1` through `hostaddr`, but `host` stays the real server). Authentication is a private key (decrypted outside the async threads) or a password.
