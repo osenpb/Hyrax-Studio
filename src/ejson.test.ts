@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellText, columnsOf, describe as classify, formatJson, isContainer, toRelaxed } from "./ejson";
+import { cellText, columnsOf, describe as classify, formatJson, formatShell, isContainer, toRelaxed } from "./ejson";
 
 describe("describe (tipos BSON en JSON extendido canónico)", () => {
   it("reconoce los tipos numéricos y de texto", () => {
@@ -104,5 +104,94 @@ describe("toRelaxed / formatJson", () => {
     );
     expect(toRelaxed("hola")).toBe("hola");
     expect(toRelaxed(null)).toBeNull();
+  });
+});
+
+describe("formatShell (estilo mongosh y lista de Compass)", () => {
+  it("claves sin comillas y los tipos como constructores", () => {
+    const doc = {
+      _id: { $oid: "681b964b042a8aacfe243aa7" },
+      CategoryName: "Beverages",
+      QuantityPerUnit: "10 boxes x 20 bags",
+      UnitsInStock: { $numberInt: "39" },
+      Discontinued: { $numberInt: "0" },
+    };
+    expect(formatShell(doc)).toBe(
+      [
+        "{",
+        "  _id: ObjectId('681b964b042a8aacfe243aa7'),",
+        '  CategoryName: "Beverages",',
+        '  QuantityPerUnit: "10 boxes x 20 bags",',
+        "  UnitsInStock: 39,",
+        "  Discontinued: 0",
+        "}",
+      ].join("\n"),
+    );
+  });
+
+  it("fechas, decimales, Long, binarios, regex y claves que necesitan comillas", () => {
+    const text = formatShell({
+      at: { $date: { $numberLong: "1772323200000" } },
+      price: { $numberDecimal: "12.50" },
+      small: { $numberLong: "5" },
+      big: { $numberLong: "9007199254740993" },
+      x: { $numberDouble: "1.5" },
+      nan: { $numberDouble: "NaN" },
+      id: { $binary: { base64: "EjRWeBI0VngSNFZ4EjRWeA==", subType: "04" } },
+      raw: { $binary: { base64: "AAEC", subType: "00" } },
+      ts: { $timestamp: { t: 1, i: 2 } },
+      re: { $regularExpression: { pattern: "^a", options: "i" } },
+      "campo con espacio": null,
+      ok: true,
+    });
+    expect(text).toContain("at: ISODate('2026-03-01T00:00:00.000Z')");
+    expect(text).toContain("price: Decimal128('12.50')");
+    expect(text).toContain("small: 5,"); // un Long seguro es un número normal
+    expect(text).toContain("big: Long('9007199254740993')");
+    expect(text).toContain("x: 1.5,");
+    expect(text).toContain("nan: NaN,");
+    expect(text).toContain("id: UUID('12345678-1234-5678-1234-567812345678'),");
+    expect(text).toContain("raw: BinData(0, 'AAEC')");
+    expect(text).toContain("ts: Timestamp({ t: 1, i: 2 })");
+    expect(text).toContain("re: /^a/i");
+    expect(text).toContain('"campo con espacio": null');
+    expect(text).toContain("ok: true");
+  });
+
+  it("documentos anidados con sangría y arreglos: simples en una línea, de documentos en varias", () => {
+    const text = formatShell({
+      addr: { city: "Lima", geo: { lat: { $numberDouble: "-12.04" } } },
+      tags: ["web", "promo"],
+      lineas: [{ sku: "A1" }, { sku: "B2" }],
+      vacio: {},
+      lista: [],
+    });
+    expect(text).toBe(
+      [
+        "{",
+        "  addr: {",
+        '    city: "Lima",',
+        "    geo: {",
+        "      lat: -12.04",
+        "    }",
+        "  },",
+        '  tags: [ "web", "promo" ],',
+        "  lineas: [",
+        "    {",
+        '      sku: "A1"',
+        "    },",
+        "    {",
+        '      sku: "B2"',
+        "    }",
+        "  ],",
+        "  vacio: {},",
+        "  lista: []",
+        "}",
+      ].join("\n"),
+    );
+  });
+
+  it("escapa las cadenas como JSON", () => {
+    expect(formatShell({ a: 'x"y\nz' })).toBe('{\n  a: "x\\"y\\nz"\n}');
   });
 });

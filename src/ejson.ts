@@ -178,3 +178,79 @@ export function toRelaxed(value: unknown): unknown {
 export function formatJson(value: unknown): string {
   return JSON.stringify(toRelaxed(value), null, 2);
 }
+
+const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const pad = (n: number) => "  ".repeat(n);
+
+function uuidFromBase64(b64: string): string | null {
+  try {
+    const hex = [...atob(b64)].map((c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+    return hex.length === 32 ? `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Valor simple al estilo de mongosh: ObjectId('…'), ISODate('…'), Long('…'), Decimal128('…'), UUID('…')… */
+function shellScalar(value: unknown): string {
+  const d = describe(value);
+  switch (d.kind) {
+    case "String":
+      return JSON.stringify(d.text);
+    case "Int64":
+      return Number.isSafeInteger(Number(d.text)) ? d.text : `Long('${d.text}')`;
+    case "Double": {
+      const n = Number(d.text);
+      return Number.isFinite(n) ? String(n) : d.text;
+    }
+    case "Decimal128":
+      return `Decimal128('${d.text}')`;
+    case "ObjectId":
+      return `ObjectId('${d.text}')`;
+    case "Date":
+      return `ISODate('${d.text}')`;
+    case "Binary": {
+      const bin = (value as { $binary: { base64?: string; subType?: string } }).$binary;
+      const b64 = String(bin.base64 ?? "");
+      const sub = String(bin.subType ?? "00");
+      const uuid = sub === "04" ? uuidFromBase64(b64) : null;
+      return uuid ? `UUID('${uuid}')` : `BinData(${parseInt(sub, 16) || 0}, '${b64}')`;
+    }
+    case "Timestamp": {
+      const t = (value as { $timestamp: { t: unknown; i: unknown } }).$timestamp;
+      return `Timestamp({ t: ${t.t}, i: ${t.i} })`;
+    }
+    case "RegExp":
+      return d.text;
+    case "MinKey":
+      return "MinKey()";
+    case "MaxKey":
+      return "MaxKey()";
+    case "Symbol":
+      return `Symbol(${JSON.stringify(d.text)})`;
+    case "Code":
+      return `Code(${JSON.stringify(d.text)})`;
+    default:
+      return d.text; // Int32, Boolean, Null, Number, Undefined
+  }
+}
+
+function shell(value: unknown, level: number): string {
+  if (!isContainer(value)) return shellScalar(value);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    const parts = value.map((v) => shell(v, level + 1));
+    const inline = `[ ${parts.join(", ")} ]`;
+    if (value.every((v) => !isContainer(v)) && inline.length <= 72) return inline;
+    return `[\n${parts.map((p) => pad(level + 1) + p).join(",\n")}\n${pad(level)}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return "{}";
+  const lines = entries.map(([k, v]) => `${pad(level + 1)}${IDENT.test(k) ? k : JSON.stringify(k)}: ${shell(v, level + 1)}`);
+  return `{\n${lines.join(",\n")}\n${pad(level)}}`;
+}
+
+/** Documento al estilo de mongosh y de la vista de lista de Compass: claves sin comillas y tipos como constructores. */
+export function formatShell(value: unknown): string {
+  return shell(value, 0);
+}
