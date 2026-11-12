@@ -16,6 +16,8 @@ interface Props {
   openRequestN?: number;
 }
 
+const SYSTEM_DATABASES = new Set(["admin", "config", "local"]);
+
 function formatSize(bytes: number | null): string | undefined {
   if (bytes === null || bytes <= 0) return undefined;
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -38,6 +40,14 @@ export default function MongoNode(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [openDbs, setOpenDbs] = useState<Set<string>>(new Set());
   const [collections, setCollections] = useState<Record<string, MongoCollection[] | { error: string }>>({});
+
+  // admin, config y local son internas de MongoDB: se ocultan salvo que sean lo único que hay.
+  const [showSystem, setShowSystem] = useState(false);
+  const userDatabases = databases?.filter((d) => !SYSTEM_DATABASES.has(d.name));
+  const hideSystem = !showSystem && !!userDatabases && userDatabases.length > 0;
+  const visibleDatabases = hideSystem ? userDatabases : databases;
+  const hiddenCount =
+    userDatabases && userDatabases.length > 0 && databases ? databases.length - userDatabases.length : 0;
 
   const loadDatabases = async () => {
     setError(null);
@@ -136,7 +146,7 @@ export default function MongoNode(props: Props) {
       {open && error && <div className="tree-error">{error}</div>}
       {open && !databases && !error && <Row depth={1} label={t("Cargando…")} muted />}
       {open &&
-        databases?.map((db) => {
+        visibleDatabases?.map((db) => {
           const dbOpen = openDbs.has(db.name);
           const list = collections[db.name];
           return (
@@ -177,6 +187,18 @@ export default function MongoNode(props: Props) {
             </div>
           );
         })}
+      {open && hiddenCount > 0 && (
+        <Row
+          depth={1}
+          label={
+            showSystem
+              ? t("Ocultar bases del sistema")
+              : t("Mostrar bases del sistema ({n})", { n: hiddenCount })
+          }
+          muted
+          onClick={() => setShowSystem((v) => !v)}
+        />
+      )}
     </div>
   );
 }

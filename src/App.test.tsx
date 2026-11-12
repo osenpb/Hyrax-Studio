@@ -20,6 +20,7 @@ let profilesCleared = false;
 let withMongoProfile = false;
 let mongoConnectError = "";
 let mongoFindError = "";
+let mongoSystemDbs = false;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -122,7 +123,16 @@ vi.mock("@tauri-apps/api/core", () => ({
         if (mongoConnectError) throw mongoConnectError;
         return { version: "MongoDB 8.0.6", readOnly: true };
       case "mongo_list_databases":
-        return [{ name: "ventas", sizeOnDisk: 20480, empty: false }];
+        return [
+          ...(mongoSystemDbs ? [{ name: "admin", sizeOnDisk: 139264, empty: false }] : []),
+          { name: "ventas", sizeOnDisk: 20480, empty: false },
+          ...(mongoSystemDbs
+            ? [
+                { name: "config", sizeOnDisk: 106496, empty: false },
+                { name: "local", sizeOnDisk: 65536, empty: false },
+              ]
+            : []),
+        ];
       case "mongo_list_collections":
         return [
           { name: "open_orders", kind: "view" },
@@ -286,6 +296,7 @@ beforeEach(() => {
   withMongoProfile = false;
   mongoConnectError = "";
   mongoFindError = "";
+  mongoSystemDbs = false;
   localStorage.removeItem("hyrax-recent");
   calls.length = 0;
   failDatabases = false;
@@ -1826,6 +1837,27 @@ describe("MongoDB: explorar", () => {
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
   };
+
+  it("oculta las bases del sistema (admin, config, local) y deja mostrarlas", async () => {
+    withMongoProfile = true;
+    mongoSystemDbs = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+
+    expect(await inSidebar().findByText("ventas")).toBeTruthy();
+    expect(inSidebar().queryByText("admin")).toBeNull();
+    expect(inSidebar().queryByText("config")).toBeNull();
+    expect(inSidebar().queryByText("local")).toBeNull();
+
+    await user.click(inSidebar().getByText("Mostrar bases del sistema (3)"));
+    expect(inSidebar().getByText("admin")).toBeTruthy();
+    expect(inSidebar().getByText("config")).toBeTruthy();
+    expect(inSidebar().getByText("local")).toBeTruthy();
+
+    await user.click(inSidebar().getByText("Ocultar bases del sistema"));
+    expect(inSidebar().queryByText("admin")).toBeNull();
+  });
 
   it("conectar desde el inicio abre la sesión y lista bases y colecciones", async () => {
     withMongoProfile = true;
