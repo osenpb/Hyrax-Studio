@@ -19,6 +19,7 @@ import { ActionButton, Row } from "./TreeRow";
 import MongoNode from "./MongoNode";
 import DropDialog, { type DropRequest } from "./DropDialog";
 import { copyText } from "../clipboard";
+import { t } from "../i18n";
 import { databaseOfSession } from "../api";
 
 const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;
@@ -47,6 +48,7 @@ interface Props {
   selectedConn: string | null;
   theme: "auto" | "light" | "dark";
   onCycleTheme: () => void;
+  onSettings: () => void;
   onSelectConn: (id: string) => void;
   onConnect: (profileId: string, database: string, key: string) => Promise<boolean>;
   onDisconnect: (profileId: string) => void;
@@ -469,6 +471,9 @@ export default function Sidebar(props: Props) {
         </button>
         <button className="ghost icon-btn" title="Nueva conexión" onClick={props.onNew}>
           <Icon name="plus" size={15} />
+        </button>
+        <button className="ghost icon-btn" title={t("Ajustes")} aria-label={t("Ajustes")} onClick={props.onSettings}>
+          <Icon name="settings" size={15} />
         </button>
       </div>
       <div className="search">

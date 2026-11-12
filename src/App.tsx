@@ -23,6 +23,8 @@ import Palette, { type PaletteItem } from "./components/Palette";
 import CompareDialog, { type Pin } from "./components/CompareDialog";
 import ResetDialog from "./components/ResetDialog";
 import StartScreen from "./components/StartScreen";
+import SettingsDialog from "./components/SettingsDialog";
+import { useLang } from "./i18n";
 import MongoCollectionTab from "./components/MongoCollectionTab";
 import { markRecent } from "./recent";
 import Icon, { type IconName } from "./components/Icon";
@@ -90,6 +92,9 @@ export default function App() {
   const [openRequest, setOpenRequest] = useState<{ id: string; n: number } | null>(null);
   const [toDelete, setToDelete] = useState<ConnectionProfile | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Al cambiar de idioma se vuelve a dibujar toda la aplicación.
+  useLang();
   const [banner, setBanner] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [theme, setTheme] = useState<Theme>(loadTheme);
@@ -325,7 +330,7 @@ export default function App() {
 
   const sqlTarget = selectedConn && selectedConn in connected ? selectedConn : (Object.keys(connected)[0] ?? null);
 
-  const cycleTheme = () => setTheme((t) => (t === "auto" ? "dark" : t === "dark" ? "light" : "auto"));
+  const cycleTheme = () => setTheme((cur) => (cur === "auto" ? "dark" : cur === "dark" ? "light" : "auto"));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -467,6 +472,7 @@ export default function App() {
         selectedConn={selectedConn}
         theme={theme}
         onCycleTheme={cycleTheme}
+        onSettings={() => setSettingsOpen(true)}
         onSelectConn={setSelectedConn}
         onConnect={connect}
         onDisconnect={disconnect}
@@ -663,6 +669,17 @@ export default function App() {
         />
       )}
 
+      {settingsOpen && (
+        <SettingsDialog
+          theme={theme}
+          onTheme={setTheme}
+          onEraseData={() => {
+            setSettingsOpen(false);
+            setResetOpen(true);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {resetOpen && (
         <ResetDialog count={profiles.length} onDone={() => void afterReset()} onClose={() => setResetOpen(false)} />
       )}

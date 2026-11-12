@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getLang, setLang } from "./i18n";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
@@ -300,6 +301,7 @@ beforeEach(() => {
   dropError = null;
   localStorage.clear();
   // Las pruebas de MongoDB parten de la tabla y del árbol, salvo las que prueban el valor por omisión.
+  setLang("es");
   localStorage.setItem("hyrax-mongo-view", "table");
   localStorage.setItem("hyrax-mongo-viewer", "tree");
 });
@@ -2221,5 +2223,52 @@ describe("MongoDB: formato por omisión y preferencia", () => {
     } finally {
       Storage.prototype.getItem = original;
     }
+  });
+});
+
+describe("ajustes e idioma", () => {
+  it("el botón de ajustes abre el diálogo y cambiar el idioma se aplica al instante y se recuerda", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+
+    await user.click(inSidebar().getByRole("button", { name: "Ajustes" }));
+    const dialog = await screen.findByRole("dialog", { name: "Ajustes" });
+    expect(within(dialog).getByRole("heading", { name: "Ajustes" })).toBeTruthy();
+
+    await user.selectOptions(within(dialog).getByLabelText("Idioma"), "en");
+    expect(getLang()).toBe("en");
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeTruthy();
+    expect(localStorage.getItem("hyrax-lang")).toBe("en");
+
+    await user.selectOptions(screen.getByLabelText("Language"), "es");
+    expect(await screen.findByRole("dialog", { name: "Ajustes" })).toBeTruthy();
+    expect(localStorage.getItem("hyrax-lang")).toBe("es");
+  });
+
+  it("desde los ajustes se cambia el tema y se llega a borrar los datos guardados", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+    await user.click(inSidebar().getByRole("button", { name: "Ajustes" }));
+    const dialog = await screen.findByRole("dialog", { name: "Ajustes" });
+
+    await user.click(within(dialog).getByRole("button", { name: "Oscuro" }));
+    expect(localStorage.getItem("hyrax-theme")).toBe("dark");
+    await user.click(within(dialog).getByRole("button", { name: "Claro" }));
+    expect(localStorage.getItem("hyrax-theme")).toBe("light");
+
+    await user.click(within(dialog).getByRole("button", { name: /Borrar conexiones y contraseñas guardadas/ }));
+    expect(screen.queryByRole("dialog", { name: "Ajustes" })).toBeNull();
+    expect(await screen.findByRole("dialog", { name: "Borrar datos guardados" })).toBeTruthy();
+  });
+
+  it("Cerrar cierra el diálogo", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+    await user.click(inSidebar().getByRole("button", { name: "Ajustes" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Ajustes" })).getByRole("button", { name: "Cerrar" }));
+    expect(screen.queryByRole("dialog", { name: "Ajustes" })).toBeNull();
   });
 });

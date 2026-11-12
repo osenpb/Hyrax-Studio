@@ -983,3 +983,14 @@ select.small {
 .jt-type {
   color: var(--tok-keyword);
 }
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.settings-label {
+  font-size: 12px;
+  color: var(--muted);
+}
