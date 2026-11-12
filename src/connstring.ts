@@ -1,4 +1,5 @@
 import type { ConnectionProfile, Engine, MongoSettings } from "./api";
+import { t } from "./i18n";
 
 export interface ParsedConnection {
   fields: Partial<Pick<ConnectionProfile, "host" | "port" | "database" | "user" | "password" | "sslMode" | "caCertPath">>;
@@ -9,20 +10,20 @@ export interface ParsedConnection {
 export function parseConnectionString(raw: string): ParsedConnection {
   const text = raw.trim();
   if (!/^postgres(ql)?:\/\//i.test(text)) {
-    throw new Error("La cadena debe empezar por postgresql:// o postgres://");
+    throw new Error(t("La cadena debe empezar por postgresql:// o postgres://"));
   }
   let url: URL;
   try {
     // Un esquema que no es especial (postgresql://) conserva el puerto tal cual, también el 80.
     url = new URL(text);
   } catch {
-    throw new Error("La cadena de conexión no es válida.");
+    throw new Error(t("La cadena de conexión no es válida."));
   }
   const decode = (s: string) => {
     try {
       return decodeURIComponent(s);
     } catch {
-      throw new Error("La cadena tiene caracteres mal codificados (usa %40 para @, %3A para :).");
+      throw new Error(t("La cadena tiene caracteres mal codificados (usa %40 para @, %3A para :)."));
     }
   };
 
@@ -32,7 +33,7 @@ export function parseConnectionString(raw: string): ParsedConnection {
   if (url.hostname) fields.host = decode(url.hostname.replace(/^\[|\]$/g, ""));
   if (url.port) {
     const port = Number(url.port);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("El puerto no es válido.");
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(t("El puerto no es válido."));
     fields.port = port;
   }
   if (url.username) fields.user = decode(url.username);
@@ -45,17 +46,17 @@ export function parseConnectionString(raw: string): ParsedConnection {
   else if (mode === "require") fields.sslMode = "require";
   else if (mode === "verify-ca" || mode === "verify-full") fields.sslMode = "verify";
   else if (mode === "prefer" || mode === "allow") {
-    notes.push(`sslmode=${mode} no existe en Hyrax; elige el cifrado a mano.`);
+    notes.push(t("sslmode={mode} no existe en Hyrax; elige el cifrado a mano.", { mode }));
   } else if (mode) {
-    throw new Error(`sslmode=${mode} no es un valor conocido.`);
+    throw new Error(t("sslmode={mode} no es un valor conocido.", { mode }));
   } else {
-    notes.push("La cadena no indica sslmode; revisa el cifrado.");
+    notes.push(t("La cadena no indica sslmode; revisa el cifrado."));
   }
   const root = url.searchParams.get("sslrootcert");
   if (root) fields.caCertPath = root;
 
   if (!fields.host) {
-    throw new Error("Falta el host. Hyrax se conecta por TCP: no admite sockets Unix ni cadenas sin host (postgresql:///base).");
+    throw new Error(t("Falta el host. Hyrax se conecta por TCP: no admite sockets Unix ni cadenas sin host (postgresql:///base)."));
   }
   return { fields, notes };
 }
@@ -92,7 +93,7 @@ const KNOWN_MONGO_PARAMS = new Set([
 export function parseMongoUri(raw: string): ParsedMongo {
   const text = raw.trim();
   const m = text.match(/^mongodb(\+srv)?:\/\/(?:([^@/]*)@)?([^/?]+)(?:\/([^?]*))?(?:\?(.*))?$/i);
-  if (!m) throw new Error("La cadena debe tener la forma mongodb://usuario:clave@host:27017/base o mongodb+srv://…");
+  if (!m) throw new Error(t("La cadena debe tener la forma mongodb://usuario:clave@host:27017/base o mongodb+srv://…"));
   const srv = !!m[1];
   const [, , userinfo, hostsRaw, dbRaw, queryRaw] = m;
 
@@ -100,7 +101,7 @@ export function parseMongoUri(raw: string): ParsedMongo {
     try {
       return decodeURIComponent(s);
     } catch {
-      throw new Error("La cadena tiene caracteres mal codificados (usa %40 para @, %3A para :).");
+      throw new Error(t("La cadena tiene caracteres mal codificados (usa %40 para @, %3A para :)."));
     }
   };
 
@@ -112,25 +113,25 @@ export function parseMongoUri(raw: string): ParsedMongo {
     const i = userinfo.indexOf(":");
     const user = i < 0 ? userinfo : userinfo.slice(0, i);
     const pass = i < 0 ? "" : userinfo.slice(i + 1);
-    if (/[@/]/.test(pass) || /[@/]/.test(user)) throw new Error("El usuario y la contraseña deben ir codificados (usa %40 para @, %2F para /).");
+    if (/[@/]/.test(pass) || /[@/]/.test(user)) throw new Error(t("El usuario y la contraseña deben ir codificados (usa %40 para @, %2F para /)."));
     if (user) fields.user = decode(user);
     if (pass) fields.password = decode(pass);
   }
 
-  if (hostsRaw.includes("@")) throw new Error("El usuario y la contraseña deben ir codificados (usa %40 para @, %2F para /).");
+  if (hostsRaw.includes("@")) throw new Error(t("El usuario y la contraseña deben ir codificados (usa %40 para @, %2F para /)."));
   const hosts = hostsRaw.split(",").map((h) => h.trim()).filter(Boolean);
-  if (hosts.length === 0) throw new Error("Falta el host.");
+  if (hosts.length === 0) throw new Error(t("Falta el host."));
   const parseHost = (entry: string): { host: string; port: number | null } => {
     const mm = entry.match(/^(\[[^\]]+\]|[^:]+)(?::(\d+))?$/);
-    if (!mm) throw new Error(`El host «${entry}» no es válido.`);
+    if (!mm) throw new Error(t("El host «{host}» no es válido.", { host: entry }));
     const port = mm[2] ? Number(mm[2]) : null;
-    if (port !== null && (port < 1 || port > 65535)) throw new Error("El puerto no es válido.");
+    if (port !== null && (port < 1 || port > 65535)) throw new Error(t("El puerto no es válido."));
     return { host: mm[1], port };
   };
   const first = parseHost(hosts[0]);
   fields.host = first.host;
   if (srv) {
-    if (hosts.length > 1 || first.port !== null) throw new Error("Con mongodb+srv el host va solo, sin puerto ni otros nodos.");
+    if (hosts.length > 1 || first.port !== null) throw new Error(t("Con mongodb+srv el host va solo, sin puerto ni otros nodos."));
   } else {
     fields.port = first.port ?? 27017;
     mongo.extraHosts = hosts
@@ -152,7 +153,7 @@ export function parseMongoUri(raw: string): ParsedMongo {
     if (KNOWN_MONGO_PARAMS.has(key.toLowerCase())) params.set(key.toLowerCase(), value);
     else ignored.push(key);
   }
-  if (ignored.length > 0) notes.push(`Se ignoraron estos parámetros: ${ignored.join(", ")}.`);
+  if (ignored.length > 0) notes.push(t("Se ignoraron estos parámetros: {list}.", { list: ignored.join(", ") }));
 
   if (params.get("replicaset")) mongo.replicaSet = params.get("replicaset")!;
   if (params.get("authsource")) mongo.authSource = params.get("authsource")!;
@@ -164,10 +165,10 @@ export function parseMongoUri(raw: string): ParsedMongo {
   else if (tls === "true" || srv) fields.sslMode = "verify";
   else {
     fields.sslMode = "disable";
-    notes.push("La cadena no activa TLS; revisa el cifrado si el servidor lo exige.");
+    notes.push(t("La cadena no activa TLS; revisa el cifrado si el servidor lo exige."));
   }
   if (params.get("tlscafile")) fields.caCertPath = params.get("tlscafile")!;
-  if (mongo.directConnection && srv) throw new Error("directConnection no se puede usar con mongodb+srv.");
+  if (mongo.directConnection && srv) throw new Error(t("directConnection no se puede usar con mongodb+srv."));
 
   return { fields, mongo, notes };
 }

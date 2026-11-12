@@ -2,6 +2,7 @@
 // cargados (no hay consultas extra al servidor): campos con su ruta (`envio.ciudad`), operadores y valores.
 
 import { cellText, describe, isContainer } from "./ejson";
+import { t } from "./i18n";
 
 type Doc = Record<string, unknown>;
 
@@ -160,7 +161,11 @@ function fieldItems(fields: FieldInfo[], prefix: string, make: (path: string) =>
   const byPath = new Map(fields.map((f) => [f.path, f]));
   return rank(fields, prefix)
     .slice(0, MAX_ITEMS)
-    .map((path) => ({ label: path, insert: make(path), detail: byPath.get(path)?.kinds.slice(0, 2).join(" · ") }));
+    .map((path) => ({
+      label: path,
+      insert: make(path),
+      detail: byPath.get(path)?.kinds.slice(0, 2).map((k) => t(k)).join(" · "),
+    }));
 }
 
 /** Cita un valor si hace falta para la sintaxis rápida (espacios, comas, comillas u operadores). */
@@ -233,7 +238,7 @@ function suggestJson(text: string, caret: number, docs: Doc[], fieldsOnly = fals
       if (fieldsOnly) return null;
       const items = JSON_OPERATORS.filter((o) => o.label.toLowerCase().startsWith(prefix.toLowerCase()))
         .slice(0, MAX_ITEMS)
-        .map((o) => ({ ...o, insert: o.insert + tail }));
+        .map((o) => ({ ...o, insert: o.insert + tail, detail: o.detail ? t(o.detail) : undefined }));
       return items.length ? { items, from: open + 1, to } : null;
     }
     const items = fieldItems(fields, prefix, (p) => p + tail);
@@ -277,7 +282,7 @@ export function suggestFilter(text: string, caret: number, docs: Doc[], force = 
   const exact = fields.find((f) => f.path === prefix);
   if (exact) {
     // El campo está completo: se ofrecen los operadores (y los demás campos que lo contienen).
-    const ops = OPERATORS.map((o) => ({ label: `${prefix} ${o.label}`, insert: prefix + o.insert, detail: o.detail }));
+    const ops = OPERATORS.map((o) => ({ label: `${prefix} ${o.label}`, insert: prefix + o.insert, detail: o.detail ? t(o.detail) : undefined }));
     const more = fieldItems(fields, prefix, (p) => p + "=").filter((i) => i.label !== prefix);
     return { items: [...ops, ...more].slice(0, MAX_ITEMS + OPERATORS.length), from: start, to: end };
   }

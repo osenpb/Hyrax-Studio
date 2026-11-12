@@ -1,4 +1,5 @@
 // Construye el filtro, el orden y la proyección de una consulta de MongoDB a partir de lo que escribe el usuario:
+import { t } from "./i18n";
 // JSON (si empieza por «{») o una sintaxis rápida sin llaves ni comillas.
 //
 //   filtro:      status=OPEN age>30 name~ana     →  {"status":"OPEN","age":{"$gt":30},"name":{"$regex":"ana","$options":"i"}}
@@ -10,10 +11,10 @@ function checkJson(text: string, what: string): string {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error(`${what} no es un JSON válido.`);
+    throw new Error(t("{what} no es un JSON válido.", { what }));
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`${what} debe ser un objeto JSON, por ejemplo { "campo": "valor" }.`);
+    throw new Error(t("{what} debe ser un objeto JSON, por ejemplo { \"campo\": \"valor\" }.", { what }));
   }
   return text;
 }
@@ -43,7 +44,7 @@ const TOKEN = /\s*([^\s=<>!~,"']+)\s*(!=|>=|<=|=|>|<|~)\s*("(?:[^"\\]|\\.)*"|'(?
 export function buildFilter(input: string): string {
   const text = input.trim();
   if (text === "") return "";
-  if (text.startsWith("{")) return checkJson(text, "El filtro");
+  if (text.startsWith("{")) return checkJson(text, t("El filtro"));
 
   const filter: Record<string, unknown> = {};
   const used: Record<string, "eq" | "ops"> = {};
@@ -57,7 +58,9 @@ export function buildFilter(input: string): string {
     const m = TOKEN.exec(text);
     if (!m) {
       throw new Error(
-        `No entiendo «${text.slice(pos, pos + 24)}». Usa campo=valor, campo>5, campo~texto, o un JSON como { "campo": "valor" }.`,
+        t("No entiendo «{text}». Usa campo=valor, campo>5, campo~texto, o un JSON como { \"campo\": \"valor\" }.", {
+          text: text.slice(pos, pos + 24),
+        }),
       );
     }
     pos = TOKEN.lastIndex;
@@ -65,12 +68,12 @@ export function buildFilter(input: string): string {
     const value = parseValue(field, rawValue);
 
     if (op === "=") {
-      if (field in used) throw new Error(`«${field}» aparece dos veces: no se puede combinar una igualdad con otra condición del mismo campo.`);
+      if (field in used) throw new Error(t("«{field}» aparece dos veces: no se puede combinar una igualdad con otra condición del mismo campo.", { field }));
       filter[field] = value;
       used[field] = "eq";
       continue;
     }
-    if (used[field] === "eq") throw new Error(`«${field}» ya tiene una igualdad: no se puede combinar con ${op}.`);
+    if (used[field] === "eq") throw new Error(t("«{field}» ya tiene una igualdad: no se puede combinar con {op}.", { field, op }));
     const bucket = (filter[field] ??= {}) as Record<string, unknown>;
     used[field] = "ops";
     if (op === "~") {
@@ -87,14 +90,14 @@ export function buildFilter(input: string): string {
 export function buildSort(input: string): string {
   const text = input.trim();
   if (text === "") return "";
-  if (text.startsWith("{")) return checkJson(text, "El orden");
+  if (text.startsWith("{")) return checkJson(text, t("El orden"));
   const sort: Record<string, number> = {};
   for (const token of text.split(/[\s,]+/).filter(Boolean)) {
     const explicit = token.match(/^(.+):(-?1)$/);
     if (explicit) sort[explicit[1]] = Number(explicit[2]);
     else if (token.startsWith("-") && token.length > 1) sort[token.slice(1)] = -1;
     else if (/^[^:\s]+$/.test(token)) sort[token] = 1;
-    else throw new Error(`No entiendo «${token}» en el orden. Usa campo, -campo o campo:-1.`);
+    else throw new Error(t("No entiendo «{token}» en el orden. Usa campo, -campo o campo:-1.", { token }));
   }
   return JSON.stringify(sort);
 }
@@ -103,7 +106,7 @@ export function buildSort(input: string): string {
 export function buildProjection(input: string): string {
   const text = input.trim();
   if (text === "") return "";
-  if (text.startsWith("{")) return checkJson(text, "La proyección");
+  if (text.startsWith("{")) return checkJson(text, t("La proyección"));
   const projection: Record<string, number> = {};
   let includes = 0;
   let excludes = 0;
@@ -117,7 +120,7 @@ export function buildProjection(input: string): string {
     }
   }
   if (includes > 0 && excludes > 0) {
-    throw new Error("MongoDB no permite mezclar campos incluidos y excluidos en una proyección (solo -_id se puede combinar).");
+    throw new Error(t("MongoDB no permite mezclar campos incluidos y excluidos en una proyección (solo -_id se puede combinar)."));
   }
   return JSON.stringify(projection);
 }

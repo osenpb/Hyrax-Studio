@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { describe, isContainer, type BsonKind } from "../ejson";
+import { t } from "../i18n";
 import Icon from "./Icon";
 
 interface Props {
@@ -71,7 +72,7 @@ export default function JsonTree({ value, name, openDepth = 2, level = 0 }: Prop
         {label}
         {label && <span className="jt-colon">:</span>}
         <span className="jt-summary">
-          {isArray ? `Array (${entries.length})` : `{ ${entries.length} ${entries.length === 1 ? "campo" : "campos"} }`}
+          {isArray ? `Array (${entries.length})` : `{ ${entries.length} ${entries.length === 1 ? t("campo") : t("campos")} }`}
         </span>
       </div>
       {open &&
