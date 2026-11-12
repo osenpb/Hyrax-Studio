@@ -67,6 +67,14 @@ const RULES: [string, string][] = [
   ["Los objetos del sistema no se pueden eliminar.", "System objects cannot be dropped."],
   ["Tipo de objeto no válido.", "Invalid object type."],
   ["Falta el nombre de la base de datos.", "The database name is missing."],
+  [
+    "El nombre de la base de datos debe tener entre 1 y 63 bytes y no puede contener caracteres nulos.",
+    "The database name must be between 1 and 63 bytes and cannot contain null characters.",
+  ],
+  [
+    "Para crear una base de datos hay que habilitar antes la escritura en este servidor (botón de modo de cualquiera de sus bases).",
+    "To create a database you must first enable writing on this server (the mode button of any of its databases).",
+  ],
   ["Las bases plantilla no se pueden eliminar.", "Template databases cannot be dropped."],
   ["La sesión está en modo solo lectura. Habilita la escritura para eliminar.", "The session is read-only. Enable writing to drop."],
   [

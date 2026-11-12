@@ -18,6 +18,7 @@ import ContextMenu, { type MenuItem } from "./ContextMenu";
 import { ActionButton, Row } from "./TreeRow";
 import MongoNode from "./MongoNode";
 import DropDialog, { type DropRequest } from "./DropDialog";
+import CreateDatabaseDialog, { type CreateDatabaseRequest } from "./CreateDatabaseDialog";
 import { copyText } from "../clipboard";
 import { t } from "../i18n";
 import { databaseOfSession } from "../api";
@@ -105,6 +106,7 @@ export default function Sidebar(props: Props) {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [drop, setDrop] = useState<DropTarget | null>(null);
+  const [creating, setCreating] = useState<ConnectionProfile | null>(null);
 
   const openMenu = (e: React.MouseEvent, items: MenuItem[]) => {
     e.preventDefault();
@@ -150,6 +152,28 @@ export default function Sidebar(props: Props) {
         lockedHint: t("Conéctate a alguna base de este servidor para poder habilitar la escritura."),
       },
     };
+  };
+
+  const createRequest = (profile: ConnectionProfile): { request: CreateDatabaseRequest; unlockKey: string | null } => {
+    const sessions = Object.entries(connected).filter(([k]) => profileOfSession(k) === profile.id);
+    const first = sessions[0];
+    return {
+      unlockKey: first ? first[0] : null,
+      request: {
+        server: profile.name,
+        existing: databases[profile.id] ?? [],
+        readOnly: !sessions.some(([, info]) => !info.readOnly),
+        unlock: first ? { database: databaseOfSession(first[0]), production: profile.production } : undefined,
+        lockedHint: t("Conéctate a alguna base de este servidor para poder habilitar la escritura."),
+      },
+    };
+  };
+
+  const confirmCreate = async (profile: ConnectionProfile, name: string) => {
+    await api.createDatabase(profile.id, name);
+    setCreating(null);
+    const live = Object.keys(connected).find((s) => profileOfSession(s) === profile.id);
+    if (live) await loadDatabases(profile, live);
   };
 
   const confirmDrop = async (target: DropTarget, option: boolean, typed: string) => {
@@ -539,6 +563,31 @@ export default function Sidebar(props: Props) {
                 expanded={open}
                 title={`${profile.host}:${profile.port}`}
                 onClick={() => clickConnection(profile)}
+                onContextMenu={
+                  isConnected
+                    ? (e) =>
+                        openMenu(e, [
+                          { key: "sql", label: t("Nuevo editor SQL"), icon: <Icon name="terminal" size={13} />, onClick: () => props.onOpenSql(sqlSession) },
+                          { key: "create", label: t("Crear base de datos…"), icon: <Icon name="plus" size={13} />, onClick: () => setCreating(profile) },
+                          { key: "sep", label: "", separator: true },
+                          {
+                            key: "reload",
+                            label: t("Recargar bases de datos"),
+                            icon: <Icon name="refresh" size={13} />,
+                            onClick: () => firstSession && void loadDatabases(profile, firstSession),
+                          },
+                          {
+                            key: "reconnect",
+                            label: t("Reconectar (usa las credenciales guardadas)"),
+                            icon: <Icon name="plug" size={13} />,
+                            onClick: () =>
+                              void withBusy(id, async () => {
+                                if ((await props.onReconnect(id)) && firstSession) await loadDatabases(profile, firstSession);
+                              }),
+                          },
+                        ])
+                    : undefined
+                }
                 actions={
                   <>
                     {isConnected && (
@@ -597,6 +646,7 @@ export default function Sidebar(props: Props) {
                                 ]
                               : []),
                             { key: "copy", label: t("Copiar nombre"), icon: <Icon name="copy" size={13} />, onClick: () => void copyText(database) },
+                            { key: "create", label: t("Crear base de datos…"), icon: <Icon name="plus" size={13} />, onClick: () => setCreating(profile) },
                             { key: "sep", label: "", separator: true },
                             {
                               key: "drop",
@@ -638,6 +688,20 @@ export default function Sidebar(props: Props) {
               }}
               onConfirm={(option, typed) => confirmDrop(drop, option, typed)}
               onClose={() => setDrop(null)}
+            />
+          );
+        })()}
+      {creating &&
+        (() => {
+          const { request, unlockKey } = createRequest(creating);
+          return (
+            <CreateDatabaseDialog
+              request={request}
+              onEnableWrite={async (confirm) => {
+                if (unlockKey) await props.onSetReadOnly(unlockKey, false, confirm);
+              }}
+              onCreate={(name) => confirmCreate(creating, name)}
+              onClose={() => setCreating(null)}
             />
           );
         })()}

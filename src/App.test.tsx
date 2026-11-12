@@ -23,6 +23,7 @@ let mongoFindError = "";
 let mongoSystemDbs = false;
 let boolColumn = false;
 let reconnectFails = false;
+let createError: string | null = null;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -279,6 +280,9 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "drop_object":
         if (dropError) throw dropError;
         return `DROP TABLE "${String(args.schema)}"."${String(args.name)}"`;
+      case "create_database":
+        if (createError) throw createError;
+        return `CREATE DATABASE "${String(args.name)}"`;
       case "drop_database":
         if (dropError) throw dropError;
         return `DROP DATABASE "${String(args.database)}"`;
@@ -310,6 +314,7 @@ beforeEach(() => {
   mongoSystemDbs = false;
   boolColumn = false;
   reconnectFails = false;
+  createError = null;
   localStorage.removeItem("hyrax-recent");
   calls.length = 0;
   failDatabases = false;
@@ -2632,5 +2637,73 @@ describe("errores del backend en inglés", () => {
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     expect(await screen.findByText("El nombre de la colección no es válido.")).toBeTruthy();
+  });
+});
+
+describe("crear una base de datos", () => {
+  const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    await inSidebar().findByText("erp_db");
+    fireEvent.contextMenu(inSidebar().getByText("dev_erp"));
+    await user.click(await screen.findByRole("menuitem", { name: /Crear base de datos/ }));
+    return screen.findByRole("dialog", { name: "Crear base de datos" });
+  };
+  const createButton = (d: HTMLElement) => within(d).getByRole("button", { name: "Crear" }) as HTMLButtonElement;
+
+  it("el clic derecho en la conexión ofrece crear, y con la escritura habilitada crea la base", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    const d = await openDialog(user);
+    expect(createButton(d).disabled).toBe(true);
+
+    await user.type(within(d).getByLabelText("Nombre de la nueva base"), "nueva_base");
+    expect(within(d).getByText('CREATE DATABASE "nueva_base";')).toBeTruthy();
+    await user.click(createButton(d));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.cmd === "create_database").pop()?.args).toEqual({ id: "p1", name: "nueva_base" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Crear base de datos" })).toBeNull());
+    expect(calls.filter((c) => c.cmd === "list_databases").length).toBeGreaterThan(1);
+  });
+
+  it("con la sesión en solo lectura no deja crear hasta habilitar la escritura", async () => {
+    const user = userEvent.setup();
+    const d = await openDialog(user);
+    await user.type(within(d).getByLabelText("Nombre de la nueva base"), "nueva_base");
+    expect(createButton(d).disabled).toBe(true);
+    expect(within(d).getByText(/La escritura está deshabilitada/)).toBeTruthy();
+
+    await user.click(within(d).getByRole("button", { name: "Habilitar escritura" }));
+    await waitFor(() => expect(createButton(d).disabled).toBe(false));
+    expect(calls.some((c) => c.cmd === "create_database")).toBe(false);
+  });
+
+  it("avisa de un nombre repetido y muestra el error del servidor", async () => {
+    readOnlyState = false;
+    createError = 'ERROR: permission denied to create database';
+    const user = userEvent.setup();
+    const d = await openDialog(user);
+    const input = within(d).getByLabelText("Nombre de la nueva base");
+
+    await user.type(input, "erp_db");
+    expect(within(d).getByText("Ya existe una base con ese nombre.")).toBeTruthy();
+    expect(createButton(d).disabled).toBe(true);
+
+    await user.clear(input);
+    await user.type(input, "otra");
+    await user.click(createButton(d));
+    expect(await within(d).findByText(/permission denied to create database/)).toBeTruthy();
+    expect(createButton(d).disabled).toBe(false);
+  });
+
+  it("el menú de una base también ofrece crear", async () => {
+    readOnlyState = false;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    fireEvent.contextMenu(await inSidebar().findByText("postgres"));
+    expect(await screen.findByRole("menuitem", { name: /Crear base de datos/ })).toBeTruthy();
   });
 });

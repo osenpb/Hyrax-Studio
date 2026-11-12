@@ -319,6 +319,7 @@ export const api = {
     invoke<string>("drop_object", { id, schema, name, kind, cascade, confirm }),
   dropDatabase: (id: string, database: string, force: boolean, confirm: string) =>
     invoke<string>("drop_database", { id, database, force, confirm }),
+  createDatabase: (id: string, name: string) => invoke<string>("create_database", { id, name }),
   searchObjects: (id: string) => invoke<ObjectRef[]>("search_objects", { id }),
   tableStructure: (id: string, schema: string, table: string) =>
     invoke<TableStructure>("table_structure", { id, schema, table }),
