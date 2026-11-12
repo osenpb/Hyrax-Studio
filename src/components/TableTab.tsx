@@ -337,7 +337,7 @@ export default function TableTab({
         : page?.estimatedRows != null
           ? t("~{n} filas (estimado)", { n: page.estimatedRows.toLocaleString() })
           : t("total desconocido");
-  const soft = error !== null && /^(Consulta cancelada|Tiempo de espera)/.test(error);
+  const soft = error !== null && /^(Consulta cancelada|Tiempo de espera|Query cancelled|Timeout)/.test(error);
 
   return (
     <div className={"tab-body" + (production ? " is-prod" : "")}>

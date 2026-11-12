@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { translateBackend } from "./i18n/backend";
 
 export type SslMode = "disable" | "require" | "verify";
 
@@ -384,7 +385,9 @@ export const api = {
 };
 
 export function errorText(e: unknown): string {
-  return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
+  const text = typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
+  // Los errores del backend vienen en español: en inglés se traducen aquí.
+  return translateBackend(text);
 }
 
 export const sessionKey = (profileId: string, database: string) => `${profileId}::${database}`;

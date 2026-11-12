@@ -279,7 +279,7 @@ export default function SqlTab({
   };
 
   const current = output?.results[active];
-  const soft = error !== null && /^(Consulta cancelada|Tiempo de espera)/.test(error);
+  const soft = error !== null && /^(Consulta cancelada|Tiempo de espera|Query cancelled|Timeout)/.test(error);
   const isPlan = current?.columns.length === 1 && current.columns[0] === "QUERY PLAN";
   const planText = isPlan ? (current?.rows[0]?.[0] ?? "") : "";
   const plan = isPlan && current && current.rows.length === 1 ? parsePlan(planText) : null;

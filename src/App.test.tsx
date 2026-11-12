@@ -2493,3 +2493,38 @@ describe("interfaz en inglés: PostgreSQL", () => {
     check("modo escritura", dialog);
   });
 });
+
+describe("errores del backend en inglés", () => {
+  it("un error de conexión que llega en español de Rust se muestra en inglés", async () => {
+    setLang("en");
+    mongoConnectError = "No se pudo conectar con MongoDB: Server selection timeout";
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    expect(await screen.findByText("Could not connect: Could not connect to MongoDB: Server selection timeout")).toBeTruthy();
+  });
+
+  it("el error de una consulta de MongoDB mantiene el detalle del servidor y traduce la plantilla", async () => {
+    setLang("en");
+    mongoFindError = "El nombre de la colección no es válido.";
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    expect(await screen.findByText("The collection name is not valid.")).toBeTruthy();
+  });
+
+  it("en español el mensaje queda como lo manda el backend", async () => {
+    mongoFindError = "El nombre de la colección no es válido.";
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    expect(await screen.findByText("El nombre de la colección no es válido.")).toBeTruthy();
+  });
+});
