@@ -1171,6 +1171,13 @@ button.toggled {
   gap: 4px;
   align-items: center;
 }
+.cell-editor select {
+  min-width: 90px;
+  padding: 2px 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border-radius: 4px;
+}
 .cell-editor input {
   min-width: 90px;
   padding: 2px 6px;

@@ -21,6 +21,7 @@ let withMongoProfile = false;
 let mongoConnectError = "";
 let mongoFindError = "";
 let mongoSystemDbs = false;
+let boolColumn = false;
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 
 const structureOf = (table: string) => ({
@@ -30,6 +31,9 @@ const structureOf = (table: string) => ({
     { name: "id", dataType: "bigint", nullable: false, default: null, isPrimaryKey: true, identity: null, generated: false, collation: null, comment: null },
     { name: "total", dataType: "integer", nullable: true, default: null, isPrimaryKey: false, identity: null, generated: false, collation: null, comment: "monto" },
     { name: "meta", dataType: "jsonb", nullable: true, default: null, isPrimaryKey: false, identity: null, generated: false, collation: null, comment: null },
+    ...(boolColumn
+      ? [{ name: "active", dataType: "boolean", nullable: true, default: null, isPrimaryKey: false, identity: null, generated: false, collation: null, comment: null }]
+      : []),
   ],
   indexes: [
     { name: `${table}_pkey`, definition: `CREATE UNIQUE INDEX ${table}_pkey ON public.${table} USING btree (id)`, unique: true, primary: true, valid: true, sizeBytes: 8192, backsConstraint: true },
@@ -165,8 +169,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "table_data":
         return {
           result: {
-            columns: ["id", "total", "meta"],
-            rows: [["1", "10", '{"a":{"b":2}}']],
+            columns: boolColumn ? ["id", "total", "meta", "active"] : ["id", "total", "meta"],
+            rows: [boolColumn ? ["1", "10", '{"a":{"b":2}}', "t"] : ["1", "10", '{"a":{"b":2}}']],
             totalRows: 1,
             truncated: false,
             totalIsLowerBound: false,
@@ -233,6 +237,7 @@ vi.mock("@tauri-apps/api/core", () => ({
           { name: "id", dataType: "bigint", nullable: false, default: null, isPrimaryKey: true },
           { name: "total", dataType: "integer", nullable: true, default: null, isPrimaryKey: false },
           { name: "meta", dataType: "jsonb", nullable: true, default: null, isPrimaryKey: false },
+          ...(boolColumn ? [{ name: "active", dataType: "boolean", nullable: true, default: null, isPrimaryKey: false }] : []),
         ];
       case "preview_changes":
         return ['UPDATE "public"."orders" SET "total" = \'11\'::integer WHERE "id" = \'1\'::bigint;'];
@@ -298,6 +303,7 @@ beforeEach(() => {
   mongoConnectError = "";
   mongoFindError = "";
   mongoSystemDbs = false;
+  boolColumn = false;
   localStorage.removeItem("hyrax-recent");
   calls.length = 0;
   failDatabases = false;
@@ -818,6 +824,37 @@ describe("edición de datos en el visor", () => {
     });
     expect(await screen.findByText(/Cambios aplicados en una transacción/)).toBeTruthy();
     expect(screen.queryByText(/cambio pendiente/)).toBeNull();
+  });
+
+  it("las columnas boolean se editan con una lista true / false / NULL", async () => {
+    readOnlyState = false;
+    boolColumn = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await openOrdersEditable(user);
+    await user.click(screen.getByText("Editar datos"));
+
+    await user.dblClick(screen.getByText("t"));
+    const select = (await screen.findByLabelText("Editar celda")) as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    expect(select.value).toBe("true");
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["true", "false", "NULL"]);
+
+    await user.selectOptions(select, "false");
+    expect(await screen.findByText("1 cambio pendiente")).toBeTruthy();
+    expect(screen.getByText("false")).toBeTruthy();
+
+    await user.dblClick(screen.getByText("false"));
+    await user.selectOptions(await screen.findByLabelText("Editar celda"), "null");
+    expect(await screen.findByText("NULL")).toBeTruthy();
+
+    await user.dblClick(screen.getByText("NULL"));
+    await user.selectOptions(await screen.findByLabelText("Editar celda"), "true");
+    expect(screen.queryByText(/cambio pendiente/)).toBeNull();
+
+    await user.dblClick(screen.getAllByText("t").find((el) => el.tagName === "TD")!);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByLabelText("Editar celda")).toBeNull();
   });
 
   it("volver a escribir el valor original no deja cambios pendientes", async () => {

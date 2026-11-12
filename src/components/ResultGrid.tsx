@@ -94,6 +94,62 @@ function CellEditor(props: {
   );
 }
 
+/** Valor de un booleano de PostgreSQL leído como texto (`t`/`f` de la consulta o `true`/`false` de una edición). */
+function boolOf(value: string | null): "true" | "false" | "null" {
+  if (value === null) return "null";
+  return value === "t" || value.toLowerCase() === "true" ? "true" : "false";
+}
+
+/** Editor de las columnas boolean: una lista con true, false y NULL en vez de un campo de texto. */
+function BoolEditor(props: {
+  initial: string | null;
+  onCommit: (value: string | null) => void;
+  onCancel: () => void;
+}) {
+  const current = boolOf(props.initial);
+  const ref = useRef<HTMLSelectElement>(null);
+  const done = useRef(false);
+
+  useEffect(() => {
+    ref.current?.focus();
+    try {
+      ref.current?.showPicker?.();
+    } catch {
+      // Sin lista desplegable automática: se abre con un clic o con las flechas.
+    }
+  }, []);
+
+  const cancel = () => {
+    if (done.current) return;
+    done.current = true;
+    props.onCancel();
+  };
+
+  return (
+    <div className="cell-editor">
+      <select
+        ref={ref}
+        aria-label={t("Editar celda")}
+        value={current}
+        onChange={(e) => {
+          if (done.current) return;
+          done.current = true;
+          const v = e.target.value;
+          props.onCommit(v === "null" ? null : v);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") cancel();
+        }}
+        onBlur={cancel}
+      >
+        <option value="true">true</option>
+        <option value="false">false</option>
+        <option value="null">NULL</option>
+      </select>
+    </div>
+  );
+}
+
 function InsertCell(props: { value: InsertValue | undefined; column: string; onChange: (cell: InsertValue) => void }) {
   const v = props.value ?? { mode: "default" as const };
   return (
@@ -403,14 +459,27 @@ export default function ResultGrid({
                     if (editing?.row === r && editing.col === c) {
                       return (
                         <td key={c} className="editing">
-                          <CellEditor
-                            initial={shown}
-                            onCancel={() => setEditing(null)}
-                            onCommit={(next) => {
-                              setEditing(null);
-                              edit?.onEditCell(r, c, next);
-                            }}
-                          />
+                          {columnTypes?.[name] === "boolean" ? (
+                            <BoolEditor
+                              initial={shown}
+                              onCancel={() => setEditing(null)}
+                              onCommit={(next) => {
+                                setEditing(null);
+                                // Volver al valor de origen (t/f en la lectura) no debe dejar un cambio pendiente.
+                                const same = boolOf(next) === boolOf(value);
+                                edit?.onEditCell(r, c, same ? value : next);
+                              }}
+                            />
+                          ) : (
+                            <CellEditor
+                              initial={shown}
+                              onCancel={() => setEditing(null)}
+                              onCommit={(next) => {
+                                setEditing(null);
+                                edit?.onEditCell(r, c, next);
+                              }}
+                            />
+                          )}
                         </td>
                       );
                     }
