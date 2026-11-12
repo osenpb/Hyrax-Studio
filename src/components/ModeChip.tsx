@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   readOnly: boolean;
@@ -35,34 +36,34 @@ export default function ModeChip({ readOnly, production, database, onSet, onErro
         className={"chip " + (readOnly ? "chip-ok" : "chip-warn")}
         onClick={() => (readOnly ? setAsking(true) : void change(true))}
         disabled={busy}
-        title={readOnly ? "Clic para habilitar escritura" : "Clic para volver a solo lectura"}
+        title={readOnly ? t("Clic para habilitar escritura") : t("Clic para volver a solo lectura")}
       >
         <Icon name={readOnly ? "lock" : "unlock"} size={13} />
-        {readOnly ? "Solo lectura" : "Escritura habilitada"}
+        {readOnly ? t("Solo lectura") : t("Escritura habilitada")}
       </button>
-      {production && <span className="chip chip-prod">PRODUCCIÓN</span>}
+      {production && <span className="chip chip-prod">{t("PRODUCCIÓN")}</span>}
 
       {asking && (
         <div className="modal-backdrop" onMouseDown={() => setAsking(false)}>
           <div className="modal small" onMouseDown={(e) => e.stopPropagation()}>
-            <h2>Habilitar escritura</h2>
+            <h2>{t("Habilitar escritura")}</h2>
             <p>
-              Vas a permitir escrituras en <strong>{database}</strong>. Los cambios se confirman al instante y no se
-              pueden deshacer. Volverá a solo lectura sola tras 10 minutos.
+              {t("Vas a permitir escrituras en")} <strong>{database}</strong>
+              {t(". Los cambios se confirman al instante y no se pueden deshacer. Volverá a solo lectura sola tras 10 minutos.")}
             </p>
             {production && (
               <>
                 <div className="alert alert-error">
                   <Icon name="alert" size={15} />
-                  <span>Esta es una conexión de PRODUCCIÓN.</span>
+                  <span>{t("Esta es una conexión de PRODUCCIÓN.")}</span>
                 </div>
                 <label>
                   <span>
-                    Escribe el nombre de la base de datos (<strong>{database}</strong>) para confirmar
+                    {t("Escribe el nombre de la base de datos")} (<strong>{database}</strong>) {t("para confirmar")}
                   </span>
                   <input
                     autoFocus
-                    aria-label="Nombre de la base para confirmar"
+                    aria-label={t("Nombre de la base para confirmar")}
                     value={typed}
                     onChange={(e) => setTyped(e.target.value)}
                   />
@@ -71,9 +72,9 @@ export default function ModeChip({ readOnly, production, database, onSet, onErro
             )}
             <div className="modal-actions">
               <span className="spacer" />
-              <button onClick={() => setAsking(false)}>Cancelar</button>
+              <button onClick={() => setAsking(false)}>{t("Cancelar")}</button>
               <button className="danger" disabled={!confirmed || busy} onClick={() => void change(false)}>
-                Habilitar escritura
+                {t("Habilitar escritura")}
               </button>
             </div>
           </div>

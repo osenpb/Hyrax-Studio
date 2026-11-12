@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { errorText } from "../api";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 export interface DropRequest {
   /** Lo que se va a eliminar, en texto: «la tabla», «la base de datos»… */
@@ -55,7 +56,7 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
       <form
         className="modal drop-dialog"
         role="dialog"
-        aria-label="Confirmar eliminación"
+        aria-label={t("Confirmar eliminación")}
         onMouseDown={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
@@ -63,13 +64,16 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
         }}
       >
         <h2>
-          Eliminar {request.noun} <code>{request.display}</code>
+          {t("Eliminar {noun}", { noun: request.noun })} <code>{request.display}</code>
         </h2>
         <div className="alert alert-error">
           <Icon name="alert" size={15} />
           <span>
-            Esta acción <strong>no se puede deshacer</strong>: se borran {request.noun === "la base de datos" ? "todas sus tablas y datos" : "la definición y todos los datos"}.
-            Si no tienes una copia de seguridad, no hay vuelta atrás.
+            {t("Esta acción")} <strong>{t("no se puede deshacer")}</strong>
+            {t(": se borran {what}.", {
+              what: request.noun === t("la base de datos") ? t("todas sus tablas y datos") : t("la definición y todos los datos"),
+            })}{" "}
+            {t("Si no tienes una copia de seguridad, no hay vuelta atrás.")}
           </span>
         </div>
 
@@ -84,7 +88,7 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
         )}
 
         <div>
-          <div className="muted drop-label">Se ejecutará:</div>
+          <div className="muted drop-label">{t("Se ejecutará:")}</div>
           <pre className="sql-preview">{request.sql(option)};</pre>
         </div>
 
@@ -92,13 +96,13 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
           <div className="alert alert-warn drop-lock">
             <Icon name="lock" size={15} />
             <div>
-              <div>La escritura está deshabilitada. Habilítala para poder eliminar.</div>
+              <div>{t("La escritura está deshabilitada. Habilítala para poder eliminar.")}</div>
               {request.unlock ? (
                 <div className="drop-unlock">
                   {request.unlock.production && (
                     <input
-                      aria-label={`Nombre de la base ${request.unlock.database}`}
-                      placeholder={`Producción: escribe ${request.unlock.database}`}
+                      aria-label={t("Nombre de la base {name}", { name: request.unlock.database })}
+                      placeholder={t("Producción: escribe {name}", { name: request.unlock.database })}
                       value={unlockTyped}
                       onChange={(e) => setUnlockTyped(e.target.value)}
                     />
@@ -110,7 +114,7 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
                       void run(() => onEnableWrite(request.unlock!.production ? unlockTyped : undefined))
                     }
                   >
-                    Habilitar escritura
+                    {t("Habilitar escritura")}
                   </button>
                 </div>
               ) : (
@@ -122,11 +126,11 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
 
         <label>
           <span>
-            Escribe <strong>{request.name}</strong> para confirmar
+            {t("Escribe")} <strong>{request.name}</strong> {t("para confirmar")}
           </span>
           <input
             autoFocus
-            aria-label="Escribe el nombre para confirmar"
+            aria-label={t("Escribe el nombre para confirmar")}
             value={typed}
             autoComplete="off"
             spellCheck={false}
@@ -144,10 +148,10 @@ export default function DropDialog({ request, onEnableWrite, onConfirm, onClose 
         <div className="modal-actions">
           <span className="spacer" />
           <button type="button" onClick={onClose} disabled={busy}>
-            Cancelar
+            {t("Cancelar")}
           </button>
           <button type="submit" className="danger" disabled={!canDrop}>
-            {busy ? "Eliminando…" : "Eliminar"}
+            {busy ? t("Eliminando…") : t("Eliminar")}
           </button>
         </div>
       </form>

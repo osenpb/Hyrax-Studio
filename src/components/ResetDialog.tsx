@@ -2,8 +2,10 @@ import { useState } from "react";
 import { api, errorText } from "../api";
 import { clearAllHistory } from "../history";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
-export const RESET_WORD = "BORRAR";
+/** Palabra que hay que escribir; el backend acepta la de los dos idiomas. */
+export const resetWord = () => t("BORRAR");
 
 interface Props {
   /** Cuántas conexiones hay guardadas (solo informativo). */
@@ -18,7 +20,7 @@ export default function ResetDialog({ count, onDone, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const ready = typed === RESET_WORD && !busy;
+  const ready = typed === resetWord() && !busy;
 
   const run = async () => {
     setBusy(true);
@@ -35,33 +37,32 @@ export default function ResetDialog({ count, onDone, onClose }: Props) {
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="modal drop-dialog" role="dialog" aria-label="Borrar datos guardados" onMouseDown={(e) => e.stopPropagation()}>
-        <h2>Borrar conexiones y contraseñas guardadas</h2>
+      <div className="modal drop-dialog" role="dialog" aria-label={t("Borrar datos guardados")} onMouseDown={(e) => e.stopPropagation()}>
+        <h2>{t("Borrar conexiones y contraseñas guardadas")}</h2>
         <div className="alert alert-error">
           <Icon name="alert" size={14} />
           <span>
-            Se eliminan <strong>{count}</strong> {count === 1 ? "conexión" : "conexiones"}, sus contraseñas y las
-            claves SSH guardadas en el almacén de credenciales del sistema. No se puede deshacer.
+            {t("Se eliminan")} <strong>{count}</strong> {count === 1 ? t("conexión") : t("conexiones")}
+            {t(", sus contraseñas y las claves SSH guardadas en el almacén de credenciales del sistema. No se puede deshacer.")}
           </span>
         </div>
         <p className="muted">
-          Se incluye la copia antigua de PgDesk, si todavía existe. No se toca ninguna base de datos, ni tus archivos,
-          ni el tema. Las sesiones abiertas se cierran. Sirve para dejar Hyrax Studio como recién instalado.
+          {t("Se incluye la copia antigua de PgDesk, si todavía existe. No se toca ninguna base de datos, ni tus archivos, ni el tema. Las sesiones abiertas se cierran. Sirve para dejar Hyrax Studio como recién instalado.")}
         </p>
         <label className="check">
           <input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} />
           <span>
-            <strong>Borrar también el historial de consultas</strong>
-            <small>Las consultas que escribiste se guardan en este equipo, en claro.</small>
+            <strong>{t("Borrar también el historial de consultas")}</strong>
+            <small>{t("Las consultas que escribiste se guardan en este equipo, en claro.")}</small>
           </span>
         </label>
         <label>
           <span>
-            Escribe <strong>{RESET_WORD}</strong> para confirmar
+            {t("Escribe")} <strong>{resetWord()}</strong> {t("para confirmar")}
           </span>
           <input
             autoFocus
-            aria-label="Escribe BORRAR para confirmar"
+            aria-label={t("Escribe {word} para confirmar", { word: resetWord() })}
             value={typed}
             autoComplete="off"
             spellCheck={false}
@@ -72,9 +73,9 @@ export default function ResetDialog({ count, onDone, onClose }: Props) {
         {error && <div className="alert alert-error">{error}</div>}
         <div className="modal-actions">
           <span className="spacer" />
-          <button onClick={onClose}>Cancelar</button>
+          <button onClick={onClose}>{t("Cancelar")}</button>
           <button className="danger" disabled={!ready} onClick={() => void run()}>
-            Borrar todo
+            {t("Borrar todo")}
           </button>
         </div>
       </div>

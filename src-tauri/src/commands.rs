@@ -150,8 +150,13 @@ pub async fn delete_profile(
     profiles::delete(&config_dir(&app)?, &id)
 }
 
-/// Palabra que el usuario debe escribir para borrar todo lo guardado.
-const RESET_CONFIRM: &str = "BORRAR";
+/// Palabra que el usuario debe escribir para borrar todo lo guardado: la del idioma de la interfaz
+/// (español o inglés). El backend acepta las dos.
+const RESET_CONFIRMS: [&str; 2] = ["BORRAR", "ERASE"];
+
+fn reset_word_ok(typed: &str) -> bool {
+    RESET_CONFIRMS.contains(&typed)
+}
 
 /// Borra todas las conexiones guardadas y sus contraseñas (y claves SSH) del almacén del sistema.
 /// Cierra las sesiones abiertas. Devuelve cuántas conexiones había.
@@ -161,8 +166,8 @@ pub async fn reset_app_data(
     state: State<'_, Sessions>,
     confirm: String,
 ) -> Result<usize, String> {
-    if confirm != RESET_CONFIRM {
-        return Err(format!("Para borrar todo hay que escribir {RESET_CONFIRM}."));
+    if !reset_word_ok(&confirm) {
+        return Err("Para borrar todo hay que escribir BORRAR (o ERASE).".to_string());
     }
     let dir = config_dir(&app)?;
     state.0.lock().await.clear();
@@ -733,6 +738,15 @@ mod tests {
         // El original se conserva.
         assert!(legacy.join("profiles.json").exists());
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_erase_word_is_accepted_in_both_languages_and_nothing_else() {
+        assert!(reset_word_ok("BORRAR"));
+        assert!(reset_word_ok("ERASE"));
+        for bad in ["", "borrar", "erase", "Borrar", " BORRAR", "BORRAR ", "DELETE"] {
+            assert!(!reset_word_ok(bad), "{bad:?}");
+        }
     }
 
     #[test]
