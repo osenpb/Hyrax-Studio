@@ -86,16 +86,18 @@ const KNOWN_MONGO_PARAMS = new Set([
 ]);
 
 /**
- * Lee `mongodb://usuario:clave@host1:27017,host2:27017/base?replicaSet=rs0&authSource=admin&tls=true`
- * y `mongodb+srv://…`. Lanza Error con un mensaje legible. Los parámetros que Hyrax no usa se avisan, no se
+ * Lee `mongodb://usuario:clave@host1:27017,host2:27017/base?replicaSet=rs0&authSource=admin&tls=true`.
+ * Lanza Error con un mensaje legible (`mongodb+srv://` no está soportado). Los parámetros que Hyrax no usa se avisan, no se
  * aplican en silencio.
  */
 export function parseMongoUri(raw: string): ParsedMongo {
   const text = raw.trim();
-  const m = text.match(/^mongodb(\+srv)?:\/\/(?:([^@/]*)@)?([^/?]+)(?:\/([^?]*))?(?:\?(.*))?$/i);
-  if (!m) throw new Error(t("La cadena debe tener la forma mongodb://usuario:clave@host:27017/base o mongodb+srv://…"));
-  const srv = !!m[1];
-  const [, , userinfo, hostsRaw, dbRaw, queryRaw] = m;
+  if (/^mongodb\+srv:\/\//i.test(text)) {
+    throw new Error(t("Las cadenas mongodb+srv:// no están soportadas; usa mongodb://host:27017/base."));
+  }
+  const m = text.match(/^mongodb:\/\/(?:([^@/]*)@)?([^/?]+)(?:\/([^?]*))?(?:\?(.*))?$/i);
+  if (!m) throw new Error(t("La cadena debe tener la forma mongodb://usuario:clave@host:27017/base"));
+  const [, userinfo, hostsRaw, dbRaw, queryRaw] = m;
 
   const decode = (s: string) => {
     try {
@@ -106,7 +108,7 @@ export function parseMongoUri(raw: string): ParsedMongo {
   };
 
   const fields: ParsedMongo["fields"] = {};
-  const mongo: MongoSettings = { srv, extraHosts: "", authSource: null, replicaSet: null, directConnection: false };
+  const mongo: MongoSettings = { extraHosts: "", authSource: null, replicaSet: null, directConnection: false };
   const notes: string[] = [];
 
   if (userinfo !== undefined) {
@@ -130,18 +132,14 @@ export function parseMongoUri(raw: string): ParsedMongo {
   };
   const first = parseHost(hosts[0]);
   fields.host = first.host;
-  if (srv) {
-    if (hosts.length > 1 || first.port !== null) throw new Error(t("Con mongodb+srv el host va solo, sin puerto ni otros nodos."));
-  } else {
-    fields.port = first.port ?? 27017;
-    mongo.extraHosts = hosts
-      .slice(1)
-      .map((h) => {
-        parseHost(h);
-        return h;
-      })
-      .join(",");
-  }
+  fields.port = first.port ?? 27017;
+  mongo.extraHosts = hosts
+    .slice(1)
+    .map((h) => {
+      parseHost(h);
+      return h;
+    })
+    .join(",");
   if (dbRaw) fields.database = decode(dbRaw);
 
   const params = new Map<string, string>();
@@ -162,13 +160,12 @@ export function parseMongoUri(raw: string): ParsedMongo {
   const tls = (params.get("tls") ?? params.get("ssl"))?.toLowerCase();
   if (tls === "false") fields.sslMode = "disable";
   else if (params.get("tlsallowinvalidcertificates")?.toLowerCase() === "true") fields.sslMode = "require";
-  else if (tls === "true" || srv) fields.sslMode = "verify";
+  else if (tls === "true") fields.sslMode = "verify";
   else {
     fields.sslMode = "disable";
     notes.push(t("La cadena no activa TLS; revisa el cifrado si el servidor lo exige."));
   }
   if (params.get("tlscafile")) fields.caCertPath = params.get("tlscafile")!;
-  if (mongo.directConnection && srv) throw new Error(t("directConnection no se puede usar con mongodb+srv."));
 
   return { fields, mongo, notes };
 }

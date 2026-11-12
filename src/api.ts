@@ -32,8 +32,6 @@ export const noSsh = (): SshSettings => ({
 export type Engine = "postgres" | "mongodb";
 
 export interface MongoSettings {
-  /** mongodb+srv:// (Atlas): el host es un nombre DNS y no lleva puerto. */
-  srv: boolean;
   /** Otros nodos del conjunto de réplicas, separados por comas. */
   extraHosts: string;
   /** Base donde se autentica el usuario (vacío = admin). */
@@ -43,7 +41,6 @@ export interface MongoSettings {
 }
 
 export const noMongo = (): MongoSettings => ({
-  srv: false,
   extraHosts: "",
   authSource: null,
   replicaSet: null,

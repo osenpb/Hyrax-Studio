@@ -23,9 +23,6 @@ pub enum Engine {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MongoSettings {
-    /// `mongodb+srv://` (Atlas): el host es un nombre DNS y no se indica puerto.
-    #[serde(default)]
-    pub srv: bool,
     /// Otros nodos del conjunto de réplicas, separados por comas (`host2:27017,host3:27017`).
     #[serde(default)]
     pub extra_hosts: String,

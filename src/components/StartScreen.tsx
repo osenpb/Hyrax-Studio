@@ -38,7 +38,7 @@ export default function StartScreen({ profiles, onNew, onOpen, logo }: Props) {
       {ordered.length === 0 ? (
         <p className="start-empty">
           {t("Todavía no hay conexiones. Crea una con los botones de arriba; también puedes pegar una cadena de conexión en el formulario y se detecta el motor.")}{" "}
-          <code>postgresql://…</code> <code>mongodb://…</code> <code>mongodb+srv://…</code>
+          <code>postgresql://…</code> <code>mongodb://…</code>
         </p>
       ) : (
         <ul className="start-list">

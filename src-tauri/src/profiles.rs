@@ -250,10 +250,9 @@ mod tests {
         let loaded = load(&dir).unwrap();
         assert_eq!(loaded[0].engine, Engine::Postgres);
 
-        let mut mongo = sample("m", "atlas");
+        let mut mongo = sample("m", "mongo");
         mongo.engine = Engine::Mongodb;
         mongo.mongo = MongoSettings {
-            srv: true,
             extra_hosts: "h2:27017".into(),
             auth_source: Some("admin".into()),
             replica_set: Some("rs0".into()),
@@ -262,7 +261,6 @@ mod tests {
         save(&dir, mongo).unwrap();
         let again = find(&dir, "m").unwrap();
         assert_eq!(again.engine, Engine::Mongodb);
-        assert!(again.mongo.srv);
         assert_eq!(again.mongo.replica_set.as_deref(), Some("rs0"));
         let _ = std::fs::remove_dir_all(&dir);
     }

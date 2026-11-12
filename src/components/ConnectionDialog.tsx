@@ -103,7 +103,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
 
   const portOk = (n: number) => Number.isInteger(n) && n >= 1 && n <= 65535;
   const valid = mongo
-    ? !!p.host.trim() && (p.mongo.srv || portOk(p.port))
+    ? !!p.host.trim() && portOk(p.port)
     : p.host.trim() &&
       p.database.trim() &&
       p.user.trim() &&
@@ -116,12 +116,6 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
   const setMongo = <K extends keyof ConnectionProfile["mongo"]>(key: K, value: ConnectionProfile["mongo"][K]) =>
     setP((prev) => {
       const next = { ...prev, mongo: { ...prev.mongo, [key]: value } };
-      // Atlas (mongodb+srv) exige TLS: se propone verificarlo, sin pisar una elección ya hecha.
-      if (key === "srv" && value === true) {
-        next.mongo.extraHosts = "";
-        next.mongo.directConnection = false;
-        if (prev.sslMode === "disable") next.sslMode = "verify";
-      }
       return next;
     });
 
@@ -287,7 +281,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
             spellCheck={false}
             placeholder={
               mongo
-                ? "mongodb+srv://usuario:clave@cluster0.abcde.mongodb.net/base"
+                ? "mongodb://usuario:clave@host:27017/base"
                 : "postgresql://usuario:clave@host:5432/base?sslmode=verify-full"
             }
             value={raw}
@@ -304,28 +298,17 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
           {t("Nombre")}
           <input value={p.name} placeholder={finalName} onChange={(e) => set("name", e.target.value)} />
         </label>
-        {mongo && (
-          <label className="check">
-            <input type="checkbox" checked={p.mongo.srv} onChange={(e) => setMongo("srv", e.target.checked)} />
-            <span>
-              <strong>{t("Usar mongodb+srv (Atlas)")}</strong>
-              <small>{t("El host es el nombre DNS del cluster; los nodos y el puerto salen del registro DNS. Exige TLS.")}</small>
-            </span>
-          </label>
-        )}
         <div className="row">
           <label className="grow">
-            {mongo && p.mongo.srv ? t("Host (nombre DNS del cluster)") : "Host"}
+            Host
             <input value={p.host} onChange={(e) => set("host", e.target.value)} />
           </label>
-          {!(mongo && p.mongo.srv) && (
-            <label className="port">
-              {t("Puerto")}
-              <input type="number" value={p.port} onChange={(e) => set("port", Number(e.target.value))} />
-            </label>
-          )}
+          <label className="port">
+            {t("Puerto")}
+            <input type="number" value={p.port} onChange={(e) => set("port", Number(e.target.value))} />
+          </label>
         </div>
-        {mongo && !p.mongo.srv && (
+        {mongo && (
           <label>
             {t("Otros nodos del conjunto de réplicas (opcional, separados por comas)")}
             <input
@@ -399,7 +382,7 @@ export default function ConnectionDialog({ initial, initialEngine, onSave, onClo
             </label>
           </div>
         )}
-        {mongo && !p.mongo.srv && (
+        {mongo && (
           <label className="check">
             <input
               type="checkbox"

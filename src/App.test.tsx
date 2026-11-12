@@ -108,11 +108,12 @@ vi.mock("@tauri-apps/api/core", () => ({
           list.push({
             ...profile,
             id: "m1",
-            name: "atlas_demo",
-            host: "cluster0.abcde.mongodb.net",
+            name: "mongo_demo",
+            host: "mongo.example.com",
+            port: 27017,
             user: "ana",
             engine: "mongodb",
-            mongo: { srv: true, extraHosts: "", authSource: null, replicaSet: null, directConnection: false },
+            mongo: { extraHosts: "", authSource: null, replicaSet: null, directConnection: false },
             hasPassword: true,
             caCertPath: null,
           });
@@ -1714,52 +1715,45 @@ describe("conexión por motor", () => {
     const pg = within(picker).getByRole("radio", { name: "PostgreSQL" });
     const mongo = within(picker).getByRole("radio", { name: "MongoDB" });
     expect(pg.getAttribute("aria-checked")).toBe("true");
-    expect(screen.queryByText("Usar mongodb+srv (Atlas)")).toBeNull();
     expect(screen.getByText("Conectar por un túnel SSH")).toBeTruthy();
 
     await user.click(mongo);
     expect(mongo.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText("Usar mongodb+srv (Atlas)")).toBeTruthy();
     expect(screen.getByText("Base de autenticación")).toBeTruthy();
     expect(screen.getByText("Base de datos (opcional)")).toBeTruthy();
     expect(screen.queryByText("Conectar por un túnel SSH")).toBeNull();
     expect((screen.getByLabelText(/^Puerto/) as HTMLInputElement).value).toBe("27017");
   });
 
-  it("mongodb+srv oculta el puerto y los nodos, y propone verificar TLS", async () => {
+  it("pegar una cadena mongodb+srv avisa de que no está soportada", async () => {
     const user = userEvent.setup();
-    const picker = await openNew(user);
-    await user.click(within(picker).getByRole("radio", { name: "MongoDB" }));
-    expect(screen.getByText("Otros nodos del conjunto de réplicas (opcional, separados por comas)")).toBeTruthy();
-
-    await user.click(screen.getByLabelText(/Usar mongodb\+srv/));
-    expect(screen.queryByLabelText(/^Puerto/)).toBeNull();
-    expect(screen.queryByText("Otros nodos del conjunto de réplicas (opcional, separados por comas)")).toBeNull();
-    expect(screen.getByText("Host (nombre DNS del cluster)")).toBeTruthy();
-    expect((screen.getByLabelText("TLS") as HTMLSelectElement).value).toBe("verify");
+    await openNew(user);
+    const box = screen.getByPlaceholderText(/postgresql:\/\/usuario:clave@host:5432/);
+    fireEvent.paste(box, { clipboardData: { getData: () => "mongodb+srv://ana:s3@c.example.net/ventas" } });
+    expect(await screen.findByText(/mongodb\+srv:\/\/ no están soportadas/)).toBeTruthy();
   });
 
-  it("pegar una cadena mongodb+srv cambia el motor y rellena los campos; Probar y Guardar mandan engine mongodb", async () => {
+  it("pegar una cadena mongodb cambia el motor y rellena los campos; Probar y Guardar mandan engine mongodb", async () => {
     const user = userEvent.setup();
     await openNew(user);
     const box = screen.getByPlaceholderText(/postgresql:\/\/usuario:clave@host:5432/);
     fireEvent.paste(box, {
-      clipboardData: { getData: () => "mongodb+srv://ana:s3@cluster0.abcde.mongodb.net/ventas?authSource=admin" },
+      clipboardData: { getData: () => "mongodb://ana:s3@mongo.example.com:27017/ventas?authSource=admin&tls=true" },
     });
 
     expect(await screen.findByText(/Cadena aplicada\./)).toBeTruthy();
     expect(within(screen.getByRole("radiogroup", { name: "Motor" })).getByRole("radio", { name: "MongoDB" }).getAttribute("aria-checked")).toBe("true");
-    expect((screen.getByLabelText("Host (nombre DNS del cluster)") as HTMLInputElement).value).toBe("cluster0.abcde.mongodb.net");
+    expect((screen.getByLabelText("Host") as HTMLInputElement).value).toBe("mongo.example.com");
 
     await user.click(screen.getByText("Probar"));
     expect(await screen.findByText("MongoDB 8.0.3")).toBeTruthy();
     const tested = calls.filter((c) => c.cmd === "test_connection").pop();
     expect(tested?.args.profile).toMatchObject({
       engine: "mongodb",
-      host: "cluster0.abcde.mongodb.net",
+      host: "mongo.example.com",
       user: "ana",
       sslMode: "verify",
-      mongo: { srv: true, authSource: "admin" },
+      mongo: { authSource: "admin" },
     });
 
     await user.click(screen.getByText("Guardar"));
@@ -1789,7 +1783,7 @@ describe("pantalla de inicio", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    const start = await screen.findByRole("button", { name: /Conectar con atlas_demo/ });
+    const start = await screen.findByRole("button", { name: /Conectar con mongo_demo/ });
     expect(within(start).getByText("MongoDB")).toBeTruthy();
     const pg = screen.getByRole("button", { name: /Conectar con dev_erp/ });
     expect(within(pg).getByText("PostgreSQL")).toBeTruthy();
@@ -1824,7 +1818,7 @@ describe("pantalla de inicio", () => {
     render(<App />);
     await screen.findByRole("button", { name: /Conectar con dev_erp/ });
     const names = screen.getAllByRole("button", { name: /^Conectar con / }).map((b) => b.getAttribute("title"));
-    expect(names).toEqual(["Conectar con atlas_demo", "Conectar con dev_erp"]);
+    expect(names).toEqual(["Conectar con mongo_demo", "Conectar con dev_erp"]);
   });
 });
 
@@ -1832,7 +1826,7 @@ describe("MongoDB: explorar", () => {
   const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
@@ -1843,7 +1837,7 @@ describe("MongoDB: explorar", () => {
     mongoSystemDbs = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
 
     expect(await inSidebar().findByText("ventas")).toBeTruthy();
     expect(inSidebar().queryByText("admin")).toBeNull();
@@ -1863,7 +1857,7 @@ describe("MongoDB: explorar", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
 
     expect(await inSidebar().findByText("ventas")).toBeTruthy();
     expect(calls.some((c) => c.cmd === "mongo_connect" && c.args.id === "m1")).toBe(true);
@@ -1962,7 +1956,7 @@ describe("MongoDB: explorar", () => {
     const user = userEvent.setup();
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     expect(await screen.findByText(/Operation exceeded time limit/)).toBeTruthy();
@@ -1973,7 +1967,7 @@ describe("MongoDB: explorar", () => {
     const user = userEvent.setup();
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     expect(await screen.findByText(/No se pudo conectar: .*Server selection timeout/)).toBeTruthy();
     expect(inSidebar().queryByText("ventas")).toBeNull();
   });
@@ -1984,7 +1978,7 @@ describe("MongoDB: explorar", () => {
     render(<App />);
     await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
     await inSidebar().findByText("erp_db");
-    await user.click(inSidebar().getByText("atlas_demo"));
+    await user.click(inSidebar().getByText("mongo_demo"));
     await inSidebar().findByText("ventas");
 
     // Los dos árboles siguen abiertos y cada motor usó sus propios comandos.
@@ -2003,7 +1997,7 @@ describe("MongoDB: explorar", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await inSidebar().findByText("ventas");
     await user.click(inSidebar().getByTitle("Desconectar"));
     await waitFor(() => expect(inSidebar().queryByText("ventas")).toBeNull());
@@ -2015,7 +2009,7 @@ describe("vista JSON de MongoDB", () => {
   const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
@@ -2066,7 +2060,7 @@ describe("MongoDB: autocompletado de la búsqueda", () => {
   const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
@@ -2164,7 +2158,7 @@ describe("vista de documentos al estilo mongosh", () => {
   const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
@@ -2204,7 +2198,7 @@ describe("MongoDB: formato por omisión y preferencia", () => {
   const open = async (user: ReturnType<typeof userEvent.setup>) => {
     withMongoProfile = true;
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
   };
@@ -2326,7 +2320,7 @@ describe("interfaz en inglés", () => {
     expect(screen.getByRole("button", { name: "New PostgreSQL connection" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New MongoDB connection" })).toBeTruthy();
     expect(screen.getByText("Connections")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Connect to atlas_demo" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect to mongo_demo" })).toBeTruthy();
     expect(screen.getByText(/New connections open in read-only mode\./)).toBeTruthy();
     noSpanish(document.body);
     expect(attrs(document.body).filter((a) => SPANISH.test(a))).toEqual([]);
@@ -2339,7 +2333,6 @@ describe("interfaz en inglés", () => {
     await user.click(await screen.findByRole("button", { name: "New MongoDB connection" }));
     const dialog = await screen.findByRole("radiogroup", { name: "Engine" });
     expect(dialog).toBeTruthy();
-    expect(screen.getByText("Use mongodb+srv (Atlas)")).toBeTruthy();
     expect(screen.getByText("Authentication database")).toBeTruthy();
     expect(screen.getByText("Database (optional)")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Test" })).toBeTruthy();
@@ -2367,7 +2360,7 @@ describe("interfaz en inglés", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await screen.findByRole("button", { name: "Connect to mongo_demo" }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
@@ -2399,7 +2392,7 @@ describe("interfaz en inglés", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await screen.findByRole("button", { name: "Connect to mongo_demo" }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     await screen.findByText("Ana");
@@ -2534,7 +2527,7 @@ describe("errores del backend en inglés", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await screen.findByRole("button", { name: "Connect to mongo_demo" }));
     expect(await screen.findByText("Could not connect: Could not connect to MongoDB: Server selection timeout")).toBeTruthy();
   });
 
@@ -2544,7 +2537,7 @@ describe("errores del backend en inglés", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: "Connect to atlas_demo" }));
+    await user.click(await screen.findByRole("button", { name: "Connect to mongo_demo" }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     expect(await screen.findByText("The collection name is not valid.")).toBeTruthy();
@@ -2555,7 +2548,7 @@ describe("errores del backend en inglés", () => {
     withMongoProfile = true;
     const user = userEvent.setup();
     render(<App />);
-    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
     await user.click(await inSidebar().findByText("ventas"));
     await user.dblClick(await inSidebar().findByText("orders"));
     expect(await screen.findByText("El nombre de la colección no es válido.")).toBeTruthy();

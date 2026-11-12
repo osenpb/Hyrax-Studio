@@ -128,7 +128,7 @@ export default function MongoNode(props: Props) {
         tag={profile.production ? { text: "PROD", tone: "danger" } : { text: "Mongo", tone: "info" }}
         expandable={connected}
         expanded={open}
-        title={`${profile.mongo?.srv ? "mongodb+srv://" : ""}${profile.host}${profile.mongo?.srv ? "" : ":" + profile.port}`}
+        title={`${profile.host}:${profile.port}`}
         onClick={() => void clickServer()}
         actions={
           <>

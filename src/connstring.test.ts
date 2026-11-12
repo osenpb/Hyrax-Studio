@@ -81,20 +81,16 @@ describe("parseMongoUri", () => {
       sslMode: "verify",
       caCertPath: "C:/ca.pem",
     });
-    expect(mongo).toMatchObject({ srv: false, extraHosts: "db2.example.com:27018", replicaSet: "rs0", authSource: "admin" });
+    expect(mongo).toMatchObject({ extraHosts: "db2.example.com:27018", replicaSet: "rs0", authSource: "admin" });
     expect(notes).toEqual([]);
   });
 
-  it("mongodb+srv (Atlas): TLS verificado por omisión y sin puerto", () => {
-    const { fields, mongo } = parseMongoUri("mongodb+srv://u:x@cluster0.abcde.mongodb.net/?retryWrites=true");
-    expect(mongo.srv).toBe(true);
-    expect(fields.host).toBe("cluster0.abcde.mongodb.net");
-    expect(fields.port).toBeUndefined();
-    expect(fields.sslMode).toBe("verify");
+  it("mongodb+srv no está soportado y lo dice con claridad", () => {
+    expect(() => parseMongoUri("mongodb+srv://u:x@c.example.net/?retryWrites=true")).toThrow(/mongodb\+srv/);
   });
 
   it("avisa de los parámetros que no usa en vez de aplicarlos en silencio", () => {
-    const { notes } = parseMongoUri("mongodb+srv://c.example.net/?retryWrites=true&w=majority");
+    const { notes } = parseMongoUri("mongodb://c.example.net/?retryWrites=true&w=majority");
     expect(notes.join(" ")).toMatch(/retryWrites, w/);
   });
 
@@ -116,11 +112,8 @@ describe("parseMongoUri", () => {
     expect(() => parseMongoUri("postgresql://h/db")).toThrow(/mongodb/);
     expect(() => parseMongoUri("mongodb://")).toThrow();
     expect(() => parseMongoUri("mongodb://h:99999/db")).toThrow(/puerto/);
-    expect(() => parseMongoUri("mongodb+srv://h:27017/db")).toThrow(/srv/);
-    expect(() => parseMongoUri("mongodb+srv://a,b/db")).toThrow(/srv/);
     expect(() => parseMongoUri("mongodb://u:p@ss@h/db")).toThrow(/codificados/);
     expect(() => parseMongoUri("mongodb://u:%E0%A4%A@h/db")).toThrow(/codificados/);
     expect(() => parseMongoUri("mongodb://h/?directConnection=true&tls=true")).not.toThrow();
-    expect(() => parseMongoUri("mongodb+srv://c.example.net/?directConnection=true")).toThrow(/directConnection/);
   });
 });

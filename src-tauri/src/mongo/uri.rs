@@ -56,19 +56,6 @@ pub fn build_uri(profile: &ConnectionProfile) -> Result<String, String> {
     }
     let query = if params.is_empty() { String::new() } else { format!("?{}", params.join("&")) };
 
-    if mongo.srv {
-        if !valid_host(host) || host.starts_with('[') || host.parse::<std::net::IpAddr>().is_ok() {
-            return Err("Con mongodb+srv el host debe ser un nombre DNS (por ejemplo cluster0.abcde.mongodb.net).".to_string());
-        }
-        if !mongo.extra_hosts.trim().is_empty() {
-            return Err("Con mongodb+srv no se indican otros nodos: salen del registro DNS.".to_string());
-        }
-        if mongo.direct_connection {
-            return Err("directConnection no se puede usar con mongodb+srv.".to_string());
-        }
-        return Ok(format!("mongodb+srv://{host}/{query}"));
-    }
-
     if profile.port == 0 {
         return Err("Falta el puerto.".to_string());
     }
@@ -126,21 +113,6 @@ mod tests {
             build_uri(&p).unwrap(),
             "mongodb://db1.example.com:27017,db2.example.com:27018,db3.example.com:27017/?replicaSet=rs0"
         );
-    }
-
-    #[test]
-    fn srv_uses_a_dns_name_and_rejects_ports_ips_and_extra_hosts() {
-        let srv = MongoSettings { srv: true, ..Default::default() };
-        assert_eq!(
-            build_uri(&profile("cluster0.abcde.mongodb.net", 0, srv.clone())).unwrap(),
-            "mongodb+srv://cluster0.abcde.mongodb.net/"
-        );
-        assert!(build_uri(&profile("10.0.0.5", 0, srv.clone())).is_err());
-        assert!(build_uri(&profile("cluster0.abcde.mongodb.net:27017", 0, srv.clone())).is_err());
-        let extra = MongoSettings { srv: true, extra_hosts: "x".into(), ..Default::default() };
-        assert!(build_uri(&profile("cluster0.abcde.mongodb.net", 0, extra)).is_err());
-        let direct = MongoSettings { srv: true, direct_connection: true, ..Default::default() };
-        assert!(build_uri(&profile("cluster0.abcde.mongodb.net", 0, direct)).is_err());
     }
 
     #[test]

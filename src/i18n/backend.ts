@@ -152,12 +152,6 @@ const RULES: [string, string][] = [
   ["Falta el puerto.", "The port is missing."],
   ["El host no es válido.", "The host is not valid."],
   ["El nodo «{}» no es válido (usa host o host:puerto).", "The node “{1}” is not valid (use host or host:port)."],
-  [
-    "Con mongodb+srv el host debe ser un nombre DNS (por ejemplo cluster0.abcde.mongodb.net).",
-    "With mongodb+srv the host must be a DNS name (for example cluster0.abcde.mongodb.net).",
-  ],
-  ["Con mongodb+srv no se indican otros nodos: salen del registro DNS.", "With mongodb+srv no other nodes are given: they come from the DNS record."],
-  ["directConnection no se puede usar con mongodb+srv.", "directConnection cannot be used with mongodb+srv."],
   ["Escribe el host sin puerto; el puerto va en su propio campo.", "Type the host without a port; the port goes in its own field."],
   // --- túnel SSH ---
   ["No se pudo leer el archivo de la clave privada SSH ({}): {}.", "Could not read the SSH private key file ({1}): {2}."],
