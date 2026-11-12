@@ -1,3 +1,5 @@
+import { t } from "./i18n";
+
 export function codeOnly(sql: string): string {
   const chars = Array.from(sql);
   const n = chars.length;
@@ -112,11 +114,11 @@ export function findDangers(sql: string): Danger[] {
     if (tokens.length === 0) return;
     const first = tokens[0];
     let label: string | null = null;
-    if (first === "delete" && !tokens.includes("where")) label = "DELETE sin WHERE: borra todas las filas de la tabla";
-    else if (first === "update" && !tokens.includes("where")) label = "UPDATE sin WHERE: modifica todas las filas de la tabla";
-    else if (first === "truncate") label = "TRUNCATE: vacía la tabla por completo";
-    else if (first === "drop") label = "DROP: elimina objetos de la base de datos";
-    else if (first === "alter" && tokens.includes("drop")) label = "ALTER … DROP: elimina columnas o restricciones";
+    if (first === "delete" && !tokens.includes("where")) label = t("DELETE sin WHERE: borra todas las filas de la tabla");
+    else if (first === "update" && !tokens.includes("where")) label = t("UPDATE sin WHERE: modifica todas las filas de la tabla");
+    else if (first === "truncate") label = t("TRUNCATE: vacía la tabla por completo");
+    else if (first === "drop") label = t("DROP: elimina objetos de la base de datos");
+    else if (first === "alter" && tokens.includes("drop")) label = t("ALTER … DROP: elimina columnas o restricciones");
     if (label) {
       const text = chars.slice(from, to).join("").trim().replace(/\s+/g, " ");
       dangers.push({ label, statement: text.length > 120 ? text.slice(0, 117) + "…" : text });

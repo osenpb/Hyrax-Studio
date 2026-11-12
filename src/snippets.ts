@@ -1,10 +1,14 @@
 import { snippetCompletion, type Completion } from "@codemirror/autocomplete";
+import { getLang, t } from "./i18n";
+
+// Los nombres entre ${…} son los campos que se rellenan al expandir; se traducen con el resto de la interfaz.
+const localize = (template: string) => template.replace(/\$\{(\w+)\}/g, (_m, word: string) => "${" + t(word) + "}");
 
 const make = (label: string, detail: string, template: string): Completion =>
-  snippetCompletion(template, { label, detail, type: "text", boost: -2 });
+  snippetCompletion(localize(template), { label, detail: t(detail), type: "text", boost: -2 });
 
 /** Plantillas que se expanden al escribir la abreviatura y pulsar Enter o Tab; Tab salta entre campos. */
-export const SNIPPETS: Completion[] = [
+const build = (): Completion[] => [
   make("sel", "SELECT … FROM … WHERE", "SELECT ${columnas}\nFROM ${tabla}\nWHERE ${condicion};"),
   make("selall", "SELECT * … LIMIT", "SELECT *\nFROM ${tabla}\nLIMIT ${100};"),
   make("cnt", "SELECT count(*)", "SELECT count(*)\nFROM ${tabla}\nWHERE ${condicion};"),
@@ -39,3 +43,13 @@ export const SNIPPETS: Completion[] = [
     "ALTER TABLE ${tabla}\n  ADD CONSTRAINT ${nombre} FOREIGN KEY (${columna})\n  REFERENCES ${otra} (${id});",
   ),
 ];
+
+let cached: { lang: string; list: Completion[] } | null = null;
+
+/** Las plantillas en el idioma actual (los nombres de los campos a rellenar también se traducen). */
+export function snippets(): Completion[] {
+  const lang = getLang();
+  if (!cached || cached.lang !== lang) cached = { lang, list: build() };
+  return cached.list;
+}
+

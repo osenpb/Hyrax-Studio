@@ -1,4 +1,5 @@
 import type { ChangeSet, InsertValue } from "./api";
+import { t } from "./i18n";
 
 export interface PendingUpdate {
   pk: Record<string, string>;
@@ -92,8 +93,8 @@ export function summarize(pending: Pending): string {
   const u = Object.keys(pending.updates).length;
   const d = Object.keys(pending.deletes).length;
   const i = pending.inserts.length;
-  if (u) parts.push(`${u} ${u === 1 ? "fila modificada" : "filas modificadas"}`);
-  if (i) parts.push(`${i} ${i === 1 ? "fila nueva" : "filas nuevas"}`);
-  if (d) parts.push(`${d} ${d === 1 ? "fila eliminada" : "filas eliminadas"}`);
+  if (u) parts.push(`${u} ${u === 1 ? t("fila modificada") : t("filas modificadas")}`);
+  if (i) parts.push(`${i} ${i === 1 ? t("fila nueva") : t("filas nuevas")}`);
+  if (d) parts.push(`${d} ${d === 1 ? t("fila eliminada") : t("filas eliminadas")}`);
   return parts.join(" · ");
 }

@@ -27,7 +27,7 @@ import { HighlightStyle, bracketMatching, indentOnInput, syntaxHighlighting } fr
 import { tags as t } from "@lezer/highlight";
 import type { ForeignKey, ObjectRef } from "../api";
 import { joinSuggestions } from "../joins";
-import { SNIPPETS } from "../snippets";
+import { snippets } from "../snippets";
 import { getLang, useLang } from "../i18n";
 import { splitStatements, statementAt } from "../statements";
 
@@ -180,7 +180,7 @@ const wordBefore = (ctx: Parameters<CompletionSource>[0]) => {
 const snippetSource: CompletionSource = (ctx) => {
   const word = wordBefore(ctx);
   if (!word || (word.from === word.to && !ctx.explicit)) return null;
-  return { from: word.from, options: SNIPPETS, validFor: /^\w*$/ };
+  return { from: word.from, options: snippets(), validFor: /^\w*$/ };
 };
 
 function functionSource(functions: ObjectRef[]): CompletionSource {

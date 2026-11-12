@@ -1,4 +1,5 @@
 import { codeOnly } from "./sqlscan";
+import { t } from "./i18n";
 
 export interface ParamRef {
   name: string;
@@ -39,7 +40,7 @@ export function uniqueParams(sql: string): string[] {
 
 export function sqlLiteral(value: string | null): string {
   if (value === null) return "NULL";
-  if (value.includes("\0")) throw new Error("El valor contiene un carácter nulo (NUL), que PostgreSQL no admite.");
+  if (value.includes("\0")) throw new Error(t("El valor contiene un carácter nulo (NUL), que PostgreSQL no admite."));
   return value.includes("\\")
     ? `E'${value.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`
     : `'${value.replace(/'/g, "''")}'`;

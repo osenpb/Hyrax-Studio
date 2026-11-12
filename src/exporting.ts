@@ -1,5 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import type { ExportFormat } from "./api";
+import { t } from "./i18n";
 
 const FILTERS: Record<ExportFormat, { name: string; extensions: string[] }> = {
   csv: { name: "CSV", extensions: ["csv"] },
@@ -10,7 +11,7 @@ const FILTERS: Record<ExportFormat, { name: string; extensions: string[] }> = {
 export async function askExportPath(baseName: string, format: ExportFormat): Promise<string | null> {
   const safe = baseName.replace(/[\\/:*?"<>|]/g, "_");
   const path = await save({
-    title: "Exportar resultado",
+    title: t("Exportar resultado"),
     defaultPath: `${safe}.${FILTERS[format].extensions[0]}`,
     filters: [FILTERS[format]],
   });

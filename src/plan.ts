@@ -1,3 +1,5 @@
+import { t } from "./i18n";
+
 export interface PlanNode {
   type: string;
   relation: string | null;
@@ -53,10 +55,10 @@ function build(raw: Raw): PlanNode {
     else if (Array.isArray(value)) details.push(`${key}: ${value.join(", ")}`);
   }
   const removed = num(raw["Rows Removed by Filter"]);
-  if (removed !== null) details.push(`Filas descartadas por el filtro: ${removed.toLocaleString()}`);
+  if (removed !== null) details.push(t("Filas descartadas por el filtro: {n}", { n: removed.toLocaleString() }));
   const hit = num(raw["Shared Hit Blocks"]);
   const read = num(raw["Shared Read Blocks"]);
-  if (hit !== null || read !== null) details.push(`Bloques: ${hit ?? 0} en caché, ${read ?? 0} leídos de disco`);
+  if (hit !== null || read !== null) details.push(t("Bloques: {hit} en caché, {read} leídos de disco", { hit: hit ?? 0, read: read ?? 0 }));
 
   return {
     type: str(raw["Node Type"]) ?? "Nodo",

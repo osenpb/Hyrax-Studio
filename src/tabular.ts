@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 export interface Tabular {
   headers: string[];
   rows: (string | null)[][];
@@ -81,7 +82,7 @@ export function parseCsv(text: string, delimiter: string): string[][] {
       touched = true;
     }
   }
-  if (quoted) throw new Error("El CSV tiene unas comillas sin cerrar.");
+  if (quoted) throw new Error(t("El CSV tiene unas comillas sin cerrar."));
   if (field !== "" || row.length > 0) endRow();
   return rows;
 }
@@ -103,11 +104,11 @@ export function parseJsonRows(text: string): Tabular {
     try {
       data = lines.map((l) => JSON.parse(l) as unknown);
     } catch {
-      throw new Error("El archivo no es un JSON válido (se esperaba un arreglo de objetos o una línea JSON por fila).");
+      throw new Error(t("El archivo no es un JSON válido (se esperaba un arreglo de objetos o una línea JSON por fila)."));
     }
   }
   if (!Array.isArray(data)) {
-    throw new Error("El JSON debe ser un arreglo de objetos, por ejemplo [{\"id\": 1}, {\"id\": 2}].");
+    throw new Error(t("El JSON debe ser un arreglo de objetos, por ejemplo [{\"id\": 1}, {\"id\": 2}]."));
   }
   if (data.length > 0 && data.every((r) => Array.isArray(r))) {
     const [head, ...body] = data as unknown[][];
@@ -117,7 +118,7 @@ export function parseJsonRows(text: string): Tabular {
   const seen = new Set<string>();
   for (const item of data) {
     if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      throw new Error("Todos los elementos del JSON deben ser objetos.");
+      throw new Error(t("Todos los elementos del JSON deben ser objetos."));
     }
     for (const key of Object.keys(item)) {
       if (!seen.has(key)) {
