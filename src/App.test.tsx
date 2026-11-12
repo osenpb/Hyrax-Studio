@@ -2121,3 +2121,43 @@ describe("MongoDB: autocompletado de la búsqueda", () => {
     expect(sort.value).toBe("-name");
   });
 });
+
+describe("vista de documentos al estilo mongosh", () => {
+  const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    await screen.findByText("Ana");
+  };
+
+  it("la vista Documentos muestra ObjectId('…') y claves sin comillas, como Compass", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    await user.click(within(screen.getByRole("group", { name: "Vista" })).getByRole("button", { name: "Documentos" }));
+    const list = await screen.findByLabelText("Lista de documentos");
+    expect(list.textContent).toContain("_id: ObjectId('507f1f77bcf86cd799439011')");
+    expect(list.textContent).toContain('name: "Ana"');
+    expect(list.textContent).toContain("age: 30");
+    expect(list.textContent).toContain("addr: {");
+    expect(list.textContent).not.toContain("$oid");
+    expect(within(list).getAllByRole("button", { name: /Copiar/ })).toHaveLength(3);
+  });
+
+  it("el visor tiene Árbol, Documento y JSON", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    const row = screen.getByText("Ana").closest("tr") as HTMLElement;
+    await user.click(within(row).getAllByRole("cell")[0]);
+    await user.click(await screen.findByRole("button", { name: "Ver documento" }));
+    const viewer = await screen.findByRole("complementary", { name: "Documento" });
+
+    await user.click(within(viewer).getByRole("button", { name: "Documento" }));
+    expect(viewer.textContent).toContain("_id: ObjectId('507f1f77bcf86cd799439011')");
+    expect(viewer.textContent).toContain('city: "Lima"');
+
+    await user.click(within(viewer).getByRole("button", { name: "JSON" }));
+    expect(viewer.textContent).toContain('"$oid": "507f1f77bcf86cd799439011"');
+  });
+});

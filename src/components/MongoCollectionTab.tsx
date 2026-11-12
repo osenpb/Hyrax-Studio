@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errorText, type ResultSet } from "../api";
 import { copyText } from "../clipboard";
-import { cellText, columnsOf, describe, formatJson } from "../ejson";
+import { cellText, columnsOf, describe, formatJson, formatShell } from "../ejson";
 import { buildFilter, buildProjection, buildSort } from "../mongoFilter";
 import { mergeSample, suggestFields, suggestFilter } from "../mongoSuggest";
 import Icon from "./Icon";
@@ -54,10 +54,13 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
   const [viewing, setViewing] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   // Vista de la colección (tabla o lista de documentos en JSON) y del visor de un documento (árbol o JSON).
-  const [view, setView] = useState<"table" | "json">("table");
-  const [viewerMode, setViewerMode] = useState<"tree" | "json">("tree");
+  const [view, setView] = useState<"table" | "docs" | "json">("table");
+  const [viewerMode, setViewerMode] = useState<"tree" | "doc" | "json">("tree");
 
   const skip = pageIndex * pageSize;
+
+  // «Documentos» es el estilo de mongosh y de la lista de Compass; «JSON» es JSON extendido.
+  const textOf = (mode: "docs" | "json" | "doc", doc: Doc) => (mode === "json" ? formatJson(doc) : formatShell(doc));
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +156,9 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
           <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>
             Tabla
           </button>
+          <button className={view === "docs" ? "active" : ""} onClick={() => setView("docs")}>
+            Documentos
+          </button>
           <button className={view === "json" ? "active" : ""} onClick={() => setView("json")}>
             JSON
           </button>
@@ -238,19 +244,19 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
             <div className="empty-hint">
               <p>{filtered ? "Ningún documento coincide con el filtro." : "La colección está vacía."}</p>
             </div>
-          ) : view === "json" ? (
-            <div className="json-list" aria-label="Documentos en JSON">
+          ) : view !== "table" ? (
+            <div className="json-list" aria-label={view === "json" ? "Documentos en JSON" : "Lista de documentos"}>
               {docs.map((d, i) => (
                 <section key={skip + i} className="json-doc">
                   <header>
                     <span className="muted">
                       #{(skip + i + 1).toLocaleString()} · {describe(d._id).text}
                     </span>
-                    <button className="ghost small" onClick={() => void copy(formatJson(d), `doc${i}`)}>
+                    <button className="ghost small" onClick={() => void copy(textOf(view, d), `doc${i}`)}>
                       <Icon name="copy" size={12} /> {copied === `doc${i}` ? "Copiado" : "Copiar"}
                     </button>
                   </header>
-                  <JsonText text={formatJson(d)} />
+                  <JsonText text={textOf(view, d)} kind={view === "json" ? "json" : "shell"} />
                 </section>
               ))}
             </div>
@@ -278,6 +284,9 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
                 <button className={viewerMode === "tree" ? "active" : ""} onClick={() => setViewerMode("tree")}>
                   Árbol
                 </button>
+                <button className={viewerMode === "doc" ? "active" : ""} onClick={() => setViewerMode("doc")}>
+                  Documento
+                </button>
                 <button className={viewerMode === "json" ? "active" : ""} onClick={() => setViewerMode("json")}>
                   JSON
                 </button>
@@ -286,12 +295,14 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
               <button
                 className="small"
                 onClick={() =>
-                  void copy(viewerMode === "json" ? formatJson(viewed) : JSON.stringify(viewed, null, 2), "viewer")
+                  void copy(viewerMode === "tree" ? JSON.stringify(viewed, null, 2) : textOf(viewerMode, viewed), "viewer")
                 }
                 title={
-                  viewerMode === "json"
-                    ? "Copia el documento como JSON"
-                    : "Copia el documento como JSON extendido canónico (conserva todos los tipos BSON)"
+                  viewerMode === "tree"
+                    ? "Copia el documento como JSON extendido canónico (conserva todos los tipos BSON)"
+                    : viewerMode === "doc"
+                      ? "Copia el documento al estilo de mongosh"
+                      : "Copia el documento como JSON"
                 }
               >
                 <Icon name="copy" size={12} /> {copied === "viewer" ? "Copiado" : "Copiar JSON"}
@@ -301,7 +312,11 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
               </button>
             </div>
             <div className="doc-viewer-body">
-              {viewerMode === "json" ? <JsonText text={formatJson(viewed)} /> : <JsonTree value={viewed} openDepth={2} />}
+              {viewerMode === "tree" ? (
+                <JsonTree value={viewed} openDepth={2} />
+              ) : (
+                <JsonText text={textOf(viewerMode, viewed)} kind={viewerMode === "json" ? "json" : "shell"} />
+              )}
             </div>
           </aside>
         )}

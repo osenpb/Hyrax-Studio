@@ -980,3 +980,6 @@ select.small {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.jt-type {
+  color: var(--tok-keyword);
+}
