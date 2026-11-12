@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, type ConnectionProfile, type MongoCollection, type MongoDatabase } from "../api";
 import { ActionButton, Row } from "./TreeRow";
+import ContextMenu, { type MenuItem } from "./ContextMenu";
+import CreateCollectionDialog, { type CreateCollectionRequest } from "./CreateCollectionDialog";
+import Icon from "./Icon";
 import { t } from "../i18n";
 
 interface Props {
@@ -42,6 +45,8 @@ export default function MongoNode(props: Props) {
   const [error, setError] = useState<string | null>(null);
   const [openDbs, setOpenDbs] = useState<Set<string>>(new Set());
   const [collections, setCollections] = useState<Record<string, MongoCollection[] | { error: string }>>({});
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [creating, setCreating] = useState<CreateCollectionRequest | null>(null);
 
   // admin, config y local son internas de MongoDB: se ocultan salvo que sean lo único que hay.
   const [showSystem, setShowSystem] = useState(false);
@@ -67,6 +72,38 @@ export default function MongoNode(props: Props) {
     } catch (e) {
       setCollections((prev) => ({ ...prev, [database]: { error: errorText(e) } }));
     }
+  };
+
+  const openCreateCollection = async (database: string) => {
+    // Los nombres existentes se piden al servidor para avisar de un repetido aunque la base no se haya abierto.
+    const existing = await api.mongoListCollections(id, database).then(
+      (list) => list.map((c) => c.name),
+      () => [] as string[],
+    );
+    setCreating({ server: profile.name, database, existing, production: profile.production });
+  };
+
+  const databaseMenu = (e: React.MouseEvent, database: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          key: "create",
+          label: t("Crear colección…"),
+          icon: <Icon name="plus" size={13} />,
+          onClick: () => void openCreateCollection(database),
+        },
+        {
+          key: "reload",
+          label: t("Recargar colecciones"),
+          icon: <Icon name="refresh" size={13} />,
+          onClick: () => void loadCollections(database),
+        },
+      ],
+    });
   };
 
   const clickServer = async () => {
@@ -174,6 +211,10 @@ export default function MongoNode(props: Props) {
                 expandable
                 expanded={dbOpen}
                 onClick={() => void clickDatabase(db.name)}
+                onContextMenu={(e) => databaseMenu(e, db.name)}
+                actions={
+                  <ActionButton title={t("Crear colección…")} icon="plus" onClick={() => void openCreateCollection(db.name)} />
+                }
               />
               {dbOpen && !list && <Row depth={2} label={t("Cargando…")} muted />}
               {dbOpen && list && "error" in list && <div className="tree-error">{list.error}</div>}
@@ -211,6 +252,19 @@ export default function MongoNode(props: Props) {
           }
           muted
           onClick={() => setShowSystem((v) => !v)}
+        />
+      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {creating && (
+        <CreateCollectionDialog
+          request={creating}
+          onClose={() => setCreating(null)}
+          onCreate={async (name, confirm) => {
+            await api.mongoCreateCollection(id, creating.database, name, confirm);
+            setCreating(null);
+            setOpenDbs((prev) => new Set(prev).add(creating.database));
+            await loadCollections(creating.database);
+          }}
         />
       )}
     </div>

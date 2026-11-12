@@ -18,6 +18,7 @@ let importError: string | null = null;
 let dropError: string | null = null;
 let profilesCleared = false;
 let withMongoProfile = false;
+let productionMongo = false;
 let mongoConnectError = "";
 let mongoFindError = "";
 let mongoSystemDbs = false;
@@ -119,6 +120,7 @@ vi.mock("@tauri-apps/api/core", () => ({
             port: 27017,
             user: "ana",
             engine: "mongodb",
+            production: productionMongo,
             mongo: { extraHosts: "", authSource: null, replicaSet: null, directConnection: false },
             hasPassword: true,
             caCertPath: null,
@@ -156,6 +158,9 @@ vi.mock("@tauri-apps/api/core", () => ({
           truncated: false,
           elapsedMs: 3,
         };
+      case "mongo_create_collection":
+        if (createError) throw createError;
+        return `db.createCollection(${JSON.stringify(args.name)})`;
       case "mongo_estimated_count":
         return 3;
       case "mongo_count":
@@ -309,6 +314,7 @@ Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
 beforeEach(() => {
   profilesCleared = false;
   withMongoProfile = false;
+  productionMongo = false;
   mongoConnectError = "";
   mongoFindError = "";
   mongoSystemDbs = false;
@@ -2776,5 +2782,75 @@ describe("carpetas de conexiones por motor", () => {
     await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
     await inSidebar().findByText("erp_db");
     expect(inSidebar().getByText("dev_erp").closest(".tree-folder-body")?.hasAttribute("hidden")).toBe(false);
+  });
+});
+
+describe("crear una colección de MongoDB", () => {
+  const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con mongo_demo/ }));
+    fireEvent.contextMenu(await inSidebar().findByText("ventas"));
+    await user.click(await screen.findByRole("menuitem", { name: /Crear colección/ }));
+    return screen.findByRole("dialog", { name: "Crear colección" });
+  };
+  const createButton = (d: HTMLElement) => within(d).getByRole("button", { name: "Crear" }) as HTMLButtonElement;
+
+  it("el clic derecho en una base ofrece crear y muestra la operación antes de ejecutarla", async () => {
+    const user = userEvent.setup();
+    const d = await openDialog(user);
+    expect(createButton(d).disabled).toBe(true);
+
+    await user.type(within(d).getByLabelText("Nombre de la nueva colección"), "clientes");
+    expect(within(d).getByText('db.createCollection("clientes")')).toBeTruthy();
+    await user.click(createButton(d));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.cmd === "mongo_create_collection").pop()?.args).toEqual({
+        id: "m1",
+        database: "ventas",
+        name: "clientes",
+        confirm: "",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Crear colección" })).toBeNull());
+    expect(calls.filter((c) => c.cmd === "mongo_list_collections").length).toBeGreaterThan(1);
+  });
+
+  it("avisa de un nombre repetido o reservado y muestra el error del servidor", async () => {
+    createError = "MongoDB: not authorized";
+    const user = userEvent.setup();
+    const d = await openDialog(user);
+    const input = within(d).getByLabelText("Nombre de la nueva colección");
+
+    await user.type(input, "orders");
+    expect(within(d).getByText("Ya existe una colección con ese nombre.")).toBeTruthy();
+    expect(createButton(d).disabled).toBe(true);
+
+    await user.clear(input);
+    await user.type(input, "system.x");
+    expect(createButton(d).disabled).toBe(true);
+
+    await user.clear(input);
+    await user.type(input, "otra");
+    await user.click(createButton(d));
+    expect(await within(d).findByText(/not authorized/)).toBeTruthy();
+    expect(createButton(d).disabled).toBe(false);
+  });
+
+  it("en producción pide escribir el nombre de la base antes de crear", async () => {
+    const user = userEvent.setup();
+    withMongoProfile = true;
+    productionMongo = true;
+    const d = await openDialog(user);
+    await user.type(within(d).getByLabelText("Nombre de la nueva colección"), "nueva");
+    expect(createButton(d).disabled).toBe(true);
+
+    await user.type(within(d).getByLabelText("Nombre de la base ventas"), "ventas");
+    expect(createButton(d).disabled).toBe(false);
+    await user.click(createButton(d));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.cmd === "mongo_create_collection").pop()?.args).toMatchObject({ confirm: "ventas" }),
+    );
   });
 });
