@@ -902,8 +902,7 @@ select.small {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
-  content-visibility: auto;
-  contain-intrinsic-size: auto 220px;
+  /* Sin content-visibility: con una altura estimada, la barra de scroll salta al recalcular los documentos reales. */
 }
 .json-doc header {
   display: flex;
