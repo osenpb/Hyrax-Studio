@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import logo from "../assets/hyrax-64.png";
 import {
   api,
@@ -15,6 +15,7 @@ import {
 } from "../api";
 import Icon, { type IconName } from "./Icon";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
+import { ActionButton, Row } from "./TreeRow";
 import DropDialog, { type DropRequest } from "./DropDialog";
 import { copyText } from "../clipboard";
 import { databaseOfSession } from "../api";
@@ -76,60 +77,6 @@ const GROUPS: { kind: RelationKind; label: string; icon: IconName }[] = [
 ];
 
 const key = (...parts: string[]) => JSON.stringify(parts);
-
-interface RowProps {
-  depth: number;
-  label: string;
-  icon?: IconName;
-  iconClass?: string;
-  tag?: { text: string; tone: "ok" | "warn" | "danger" | "info" };
-  expandable?: boolean;
-  expanded?: boolean;
-  active?: boolean;
-  muted?: boolean;
-  title?: string;
-  actions?: ReactNode;
-  onClick?: () => void;
-  onDoubleClick?: () => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
-}
-
-function Row(p: RowProps) {
-  return (
-    <div
-      className={"tree-row" + (p.active ? " active" : "") + (p.muted ? " muted" : "")}
-      style={{ paddingLeft: 8 + p.depth * 14 }}
-      title={p.title}
-      onClick={p.onClick}
-      onDoubleClick={p.onDoubleClick}
-      onContextMenu={p.onContextMenu}
-    >
-      <span className={"chev" + (p.expanded ? " open" : "") + (p.expandable ? "" : " hidden")}>
-        <Icon name="chevron" size={12} />
-      </span>
-      {p.icon && <Icon name={p.icon} className={p.iconClass} size={14} />}
-      <span className="label">{p.label}</span>
-      {p.tag && <span className={"tag tag-" + p.tag.tone}>{p.tag.text}</span>}
-      {p.actions && (
-        <span className="row-actions" onClick={(e) => e.stopPropagation()}>
-          {p.actions}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function ActionButton(props: { title: string; icon: IconName; onClick: () => void; danger?: boolean }) {
-  return (
-    <button
-      className={"ghost icon-btn" + (props.danger ? " danger-hover" : "")}
-      title={props.title}
-      onClick={props.onClick}
-    >
-      <Icon name={props.icon} size={13} />
-    </button>
-  );
-}
 
 export default function Sidebar(props: Props) {
   const { profiles, connected, selectedConn } = props;
