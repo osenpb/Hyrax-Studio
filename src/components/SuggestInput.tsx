@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
 import type { SuggestResult } from "../mongoSuggest";
+import { t } from "../i18n";
 
 interface Props {
   value: string;
@@ -105,7 +106,7 @@ export default function SuggestInput(props: Props) {
         }}
       />
       {open && (
-        <ul className="suggest-list" role="listbox" id={listId} aria-label={`Sugerencias de ${ariaLabel.toLowerCase()}`}>
+        <ul className="suggest-list" role="listbox" id={listId} aria-label={t("Sugerencias de {name}", { name: ariaLabel.toLowerCase() })}>
           {result!.items.map((item, i) => (
             <li
               key={item.label + i}

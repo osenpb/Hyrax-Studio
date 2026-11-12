@@ -24,7 +24,7 @@ import CompareDialog, { type Pin } from "./components/CompareDialog";
 import ResetDialog from "./components/ResetDialog";
 import StartScreen from "./components/StartScreen";
 import SettingsDialog from "./components/SettingsDialog";
-import { useLang } from "./i18n";
+import { t as tr, useLang } from "./i18n";
 import MongoCollectionTab from "./components/MongoCollectionTab";
 import { markRecent } from "./recent";
 import Icon, { type IconName } from "./components/Icon";
@@ -94,7 +94,7 @@ export default function App() {
   const [resetOpen, setResetOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Al cambiar de idioma se vuelve a dibujar toda la aplicación.
-  useLang();
+  const lang = useLang();
   const [banner, setBanner] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [theme, setTheme] = useState<Theme>(loadTheme);
@@ -147,7 +147,7 @@ export default function App() {
       markRecent(profileId);
       return true;
     } catch (e) {
-      setBanner(`No se pudo conectar: ${errorText(e)}`);
+      setBanner(tr("No se pudo conectar: {error}", { error: errorText(e) }));
       return false;
     }
   };
@@ -160,7 +160,7 @@ export default function App() {
       markRecent(profileId);
       return true;
     } catch (e) {
-      setBanner(`No se pudo conectar: ${errorText(e)}`);
+      setBanner(tr("No se pudo conectar: {error}", { error: errorText(e) }));
       return false;
     }
   };
@@ -196,7 +196,7 @@ export default function App() {
             .setReadOnly(key, true)
             .then((readOnly) => {
               setConnected((prev) => (key in prev ? { ...prev, [key]: { ...prev[key], readOnly } } : prev));
-              setBanner(`La escritura se desactivó sola tras 10 minutos en ${nameOf(key)}. La sesión volvió a solo lectura.`);
+              setBanner(tr("La escritura se desactivó sola tras 10 minutos en {name}. La sesión volvió a solo lectura.", { name: nameOf(key) }));
             })
             .catch(() => undefined);
         }, WRITE_WINDOW_MS);
@@ -273,7 +273,7 @@ export default function App() {
     pinCounter.current += 1;
     const pin: Pin = { id: pinCounter.current, label, result, at: Date.now() };
     setPins((prev) => [...prev, pin].slice(-MAX_PINS));
-    setNote(`Resultado fijado: ${label}. Usa «Comparar» para ver las diferencias con otro.`);
+    setNote(tr("Resultado fijado: {label}. Usa «Comparar» para ver las diferencias con otro.", { label }));
   };
 
   useEffect(() => {
@@ -351,7 +351,7 @@ export default function App() {
   useEffect(() => {
     if (palette !== "objects" || !sqlTarget) return;
     let cancelled = false;
-    setObjectsStatus("Cargando objetos…");
+    setObjectsStatus(tr("Cargando objetos…"));
     api
       .searchObjects(sqlTarget)
       .then((list) => {
@@ -377,10 +377,10 @@ export default function App() {
       rank(objectList, query, (o) => [o.name, `${o.schema}.${o.name}`], 60).map((o) => ({
         key: `${o.kind}:${o.schema}.${o.name}:${o.oid}`,
         label: o.kind === "function" || o.kind === "procedure" ? `${o.name}(${o.detail ?? ""})` : o.name,
-        detail: `${o.schema} · ${KIND_LABEL[o.kind]}`,
+        detail: `${o.schema} · ${tr(KIND_LABEL[o.kind])}`,
         icon: <Icon name={KIND_ICON[o.kind]} size={14} className={"ic-" + o.kind} />,
       })),
-    [objectList],
+    [objectList, lang],
   );
 
   const pickObject = (item: PaletteItem, alternate: boolean) => {
@@ -398,7 +398,7 @@ export default function App() {
     const list: (PaletteItem & { run: () => void })[] = [
       {
         key: "goto",
-        label: "Ir a tabla, vista o función…",
+        label: tr("Ir a tabla, vista o función…"),
         detail: "Ctrl+N",
         icon: <Icon name="search" size={14} />,
         disabled: !sqlTarget,
@@ -407,22 +407,22 @@ export default function App() {
       {
         key: "sql",
         label: "Nuevo editor SQL",
-        detail: sqlTarget ? nameOf(sqlTarget) : "conéctate primero",
+        detail: sqlTarget ? nameOf(sqlTarget) : tr("conéctate primero"),
         icon: <Icon name="terminal" size={14} />,
         disabled: !sqlTarget,
         run: () => sqlTarget && openSql(sqlTarget),
       },
       {
         key: "compare",
-        label: "Comparar resultados fijados…",
-        detail: `${pins.length} fijados`,
+        label: tr("Comparar resultados fijados…"),
+        detail: tr("{n} fijados", { n: pins.length }),
         icon: <Icon name="compare" size={14} />,
         run: () => setCompareOpen(true),
       },
       {
         key: "ddl",
-        label: "Ver DDL de la tabla abierta",
-        detail: activeTabInfo?.kind === "table" ? `${activeTabInfo.schema}.${activeTabInfo.table}` : "abre una tabla",
+        label: tr("Ver DDL de la tabla abierta"),
+        detail: activeTabInfo?.kind === "table" ? `${activeTabInfo.schema}.${activeTabInfo.table}` : tr("abre una tabla"),
         icon: <Icon name="code" size={14} />,
         disabled: activeTabInfo?.kind !== "table",
         run: () =>
@@ -431,33 +431,39 @@ export default function App() {
       },
       {
         key: "close",
-        label: "Cerrar la pestaña actual",
+        label: tr("Cerrar la pestaña actual"),
         icon: <Icon name="close" size={14} />,
         disabled: !activeTabInfo,
         run: () => activeTabInfo && closeTab(activeTabInfo.id),
       },
       {
         key: "theme",
-        label: "Cambiar tema (automático, oscuro, claro)",
+        label: tr("Cambiar tema (automático, oscuro, claro)"),
         icon: <Icon name="moon" size={14} />,
         run: cycleTheme,
       },
       {
         key: "new-connection",
-        label: "Nueva conexión…",
+        label: tr("Nueva conexión…"),
         icon: <Icon name="plus" size={14} />,
         run: () => setDialog({ profile: null }),
       },
       {
+        key: "settings",
+        label: tr("Ajustes…"),
+        icon: <Icon name="settings" size={14} />,
+        run: () => setSettingsOpen(true),
+      },
+      {
         key: "reset",
-        label: "Borrar conexiones y contraseñas guardadas…",
-        detail: `${profiles.length} guardadas`,
+        label: tr("Borrar conexiones y contraseñas guardadas…"),
+        detail: tr("{n} guardadas", { n: profiles.length }),
         icon: <Icon name="trash" size={14} />,
         run: () => setResetOpen(true),
       },
     ];
     return list;
-  }, [sqlTarget, pins.length, activeTabInfo, profiles, tabs]);
+  }, [sqlTarget, pins.length, activeTabInfo, profiles, tabs, lang]);
 
   const searchCommands = useCallback(
     (query: string): PaletteItem[] => rank(commands, query, (c) => [c.label], 30),
@@ -499,7 +505,7 @@ export default function App() {
           setConnected((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)));
           closeTabsWhere((t) => t.connId === key);
           setSelectedConn((cur) => (cur === key ? null : cur));
-          setNote(`Base de datos ${database} eliminada.`);
+          setNote(tr("Base de datos {name} eliminada.", { name: database }));
         }}
         onOpenTable={(connId, schema, table) => openTable(connId, schema, table)}
         onOpenDdl={openDdl}
@@ -545,7 +551,7 @@ export default function App() {
               <span className="tab-title">{t.title}</span>
               <button
                 className="ghost icon-btn tab-close"
-                title="Cerrar pestaña"
+                title={tr("Cerrar pestaña")}
                 onClick={(e) => {
                   e.stopPropagation();
                   closeTab(t.id);
@@ -557,15 +563,15 @@ export default function App() {
           ))}
           <span className="spacer" />
           {pins.length > 0 && (
-            <button className="new-sql" onClick={() => setCompareOpen(true)} title="Comparar resultados fijados">
-              <Icon name="compare" size={13} /> Comparar ({pins.length})
+            <button className="new-sql" onClick={() => setCompareOpen(true)} title={tr("Comparar resultados fijados")}>
+              <Icon name="compare" size={13} /> {tr("Comparar")} ({pins.length})
             </button>
           )}
           <button
             className="new-sql"
             disabled={!sqlTarget}
             onClick={() => sqlTarget && openSql(sqlTarget)}
-            title={sqlTarget ? `Nuevo editor SQL en ${nameOf(sqlTarget)}` : "Conéctate primero"}
+            title={sqlTarget ? tr("Nuevo editor SQL en {name}", { name: nameOf(sqlTarget) }) : tr("Conéctate primero")}
           >
             <Icon name="plus" size={13} /> SQL
           </button>
@@ -631,26 +637,30 @@ export default function App() {
 
       {palette === "objects" && (
         <Palette
-          title="Ir a objeto"
-          placeholder={sqlTarget ? `Buscar en ${nameOf(sqlTarget)}: tablas, vistas, funciones…` : "Conéctate a una base primero"}
+          title={tr("Ir a objeto")}
+          placeholder={
+            sqlTarget
+              ? tr("Buscar en {name}: tablas, vistas, funciones…", { name: nameOf(sqlTarget) })
+              : tr("Conéctate a una base primero")
+          }
           search={searchObjects}
           version={objectList}
           status={
             !sqlTarget
-              ? "Conéctate a una base de datos para buscar sus objetos."
+              ? tr("Conéctate a una base de datos para buscar sus objetos.")
               : objectList.length === 0
                 ? objectsStatus
                 : null
           }
-          hint="Enter abre · Ctrl+Enter abre el DDL · Esc cierra"
+          hint={tr("Enter abre · Ctrl+Enter abre el DDL · Esc cierra")}
           onPick={pickObject}
           onClose={() => setPalette(null)}
         />
       )}
       {palette === "commands" && (
         <Palette
-          title="Comandos"
-          placeholder="Escribe un comando…"
+          title={tr("Comandos")}
+          placeholder={tr("Escribe un comando…")}
           search={searchCommands}
           version={commands}
           hint="Enter ejecuta · Esc cierra"
@@ -694,13 +704,13 @@ export default function App() {
       {toDelete && (
         <div className="modal-backdrop" onMouseDown={() => setToDelete(null)}>
           <div className="modal small" onMouseDown={(e) => e.stopPropagation()}>
-            <h2>Eliminar conexión</h2>
+            <h2>{tr("Eliminar conexión")}</h2>
             <p>
-              ¿Eliminar <strong>{toDelete.name}</strong>? Solo se borra de Hyrax, no de la base de datos.
+              {tr("¿Eliminar")} <strong>{toDelete.name}</strong>{tr("? Solo se borra de Hyrax, no de la base de datos.")}
             </p>
             <div className="modal-actions">
               <span className="spacer" />
-              <button onClick={() => setToDelete(null)}>Cancelar</button>
+              <button onClick={() => setToDelete(null)}>{tr("Cancelar")}</button>
               <button className="danger" onClick={confirmDelete}>
                 Eliminar
               </button>

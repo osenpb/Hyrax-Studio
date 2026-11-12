@@ -1,4 +1,5 @@
 import type { ConnectionProfile, Engine } from "../api";
+import { t } from "../i18n";
 import { recentIds, sortByRecent } from "../recent";
 import Icon from "./Icon";
 
@@ -20,25 +21,24 @@ export default function StartScreen({ profiles, onNew, onOpen, logo }: Props) {
         <img className="start-logo" src={logo} alt="" />
         <div>
           <h1>Hyrax Studio</h1>
-          <p>Cliente de bases de datos de escritorio</p>
+          <p>{t("Cliente de bases de datos de escritorio")}</p>
         </div>
       </div>
 
       <div className="start-new">
         <button className="primary" onClick={() => onNew("postgres")}>
-          <Icon name="plus" size={13} /> Nueva conexión PostgreSQL
+          <Icon name="plus" size={13} /> {t("Nueva conexión PostgreSQL")}
         </button>
         <button onClick={() => onNew("mongodb")}>
-          <Icon name="plus" size={13} /> Nueva conexión MongoDB
+          <Icon name="plus" size={13} /> {t("Nueva conexión MongoDB")}
         </button>
       </div>
 
-      <h2 className="start-title">Conexiones</h2>
+      <h2 className="start-title">{t("Conexiones")}</h2>
       {ordered.length === 0 ? (
         <p className="start-empty">
-          Todavía no hay conexiones. Crea una con los botones de arriba; también puedes pegar una cadena
-          (<code>postgresql://…</code>, <code>mongodb://…</code> o <code>mongodb+srv://…</code>) en el formulario
-          y se detecta el motor.
+          {t("Todavía no hay conexiones. Crea una con los botones de arriba; también puedes pegar una cadena de conexión en el formulario y se detecta el motor.")}{" "}
+          <code>postgresql://…</code> <code>mongodb://…</code> <code>mongodb+srv://…</code>
         </p>
       ) : (
         <ul className="start-list">
@@ -47,8 +47,8 @@ export default function StartScreen({ profiles, onNew, onOpen, logo }: Props) {
               <button
                 className="start-item"
                 onClick={() => onOpen(p)}
-                aria-label={`Conectar con ${p.name}`}
-                title={`Conectar con ${p.name}`}
+                aria-label={t("Conectar con {name}", { name: p.name })}
+                title={t("Conectar con {name}", { name: p.name })}
               >
                 <span className={"engine-badge engine-" + (p.engine ?? "postgres")}>
                   {ENGINE_LABEL[p.engine ?? "postgres"]}
@@ -65,8 +65,8 @@ export default function StartScreen({ profiles, onNew, onOpen, logo }: Props) {
         </ul>
       )}
       <p className="start-hint">
-        <Icon name="lock" size={12} /> Las conexiones nuevas abren en modo solo lectura. <kbd>Ctrl</kbd>+<kbd>Mayús</kbd>+
-        <kbd>A</kbd> abre los comandos.
+        <Icon name="lock" size={12} /> {t("Las conexiones nuevas abren en modo solo lectura.")} <kbd>Ctrl</kbd>+
+        <kbd>{t("Mayús")}</kbd>+<kbd>A</kbd> {t("abre los comandos")}
       </p>
     </div>
   );

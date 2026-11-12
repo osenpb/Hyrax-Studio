@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, errorText, type ConnectionProfile, type MongoCollection, type MongoDatabase } from "../api";
 import { ActionButton, Row } from "./TreeRow";
+import { t } from "../i18n";
 
 interface Props {
   profile: ConnectionProfile;
@@ -111,7 +112,7 @@ export default function MongoNode(props: Props) {
     <div>
       <Row
         depth={0}
-        label={busy ? `${profile.name} — conectando…` : profile.name}
+        label={busy ? t("{name} — conectando…", { name: profile.name }) : profile.name}
         icon="server"
         iconClass={connected ? "ic-on" : "ic-off"}
         tag={profile.production ? { text: "PROD", tone: "danger" } : { text: "Mongo", tone: "info" }}
@@ -123,17 +124,17 @@ export default function MongoNode(props: Props) {
           <>
             {connected && (
               <>
-                <ActionButton title="Recargar bases de datos" icon="refresh" onClick={() => void loadDatabases()} />
-                <ActionButton title="Desconectar" icon="power" onClick={() => props.onDisconnect(id)} />
+                <ActionButton title={t("Recargar bases de datos")} icon="refresh" onClick={() => void loadDatabases()} />
+                <ActionButton title={t("Desconectar")} icon="power" onClick={() => props.onDisconnect(id)} />
               </>
             )}
-            <ActionButton title="Editar" icon="edit" onClick={() => props.onEdit(profile)} />
-            <ActionButton title="Eliminar" icon="trash" danger onClick={() => props.onDelete(profile)} />
+            <ActionButton title={t("Editar")} icon="edit" onClick={() => props.onEdit(profile)} />
+            <ActionButton title={t("Eliminar")} icon="trash" danger onClick={() => props.onDelete(profile)} />
           </>
         }
       />
       {open && error && <div className="tree-error">{error}</div>}
-      {open && !databases && !error && <Row depth={1} label="Cargando…" muted />}
+      {open && !databases && !error && <Row depth={1} label={t("Cargando…")} muted />}
       {open &&
         databases?.map((db) => {
           const dbOpen = openDbs.has(db.name);
@@ -150,9 +151,9 @@ export default function MongoNode(props: Props) {
                 expanded={dbOpen}
                 onClick={() => void clickDatabase(db.name)}
               />
-              {dbOpen && !list && <Row depth={2} label="Cargando…" muted />}
+              {dbOpen && !list && <Row depth={2} label={t("Cargando…")} muted />}
               {dbOpen && list && "error" in list && <div className="tree-error">{list.error}</div>}
-              {dbOpen && Array.isArray(list) && list.length === 0 && <Row depth={2} label="Sin colecciones" muted />}
+              {dbOpen && Array.isArray(list) && list.length === 0 && <Row depth={2} label={t("Sin colecciones")} muted />}
               {dbOpen &&
                 Array.isArray(list) &&
                 list.map((c) => (
@@ -162,11 +163,11 @@ export default function MongoNode(props: Props) {
                     label={c.name}
                     icon={c.kind === "view" ? "view" : "table"}
                     iconClass={c.kind === "view" ? "ic-view" : "ic-table"}
-                    title={c.kind === "collection" ? "Doble clic para ver los documentos" : `${c.kind} · doble clic para verlo`}
+                    title={c.kind === "collection" ? t("Doble clic para ver los documentos") : t("{kind} · doble clic para verlo", { kind: c.kind })}
                     onDoubleClick={() => props.onOpenCollection(id, db.name, c.name, c.kind)}
                     actions={
                       <ActionButton
-                        title="Ver documentos"
+                        title={t("Ver documentos")}
                         icon="open"
                         onClick={() => props.onOpenCollection(id, db.name, c.name, c.kind)}
                       />

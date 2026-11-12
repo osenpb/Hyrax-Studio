@@ -31,6 +31,13 @@ const NOUN: Record<RelationKind, string> = {
   foreign: "la tabla foránea",
 };
 
+const DROP_LABEL: Record<RelationKind, string> = {
+  table: "Eliminar tabla…",
+  view: "Eliminar vista…",
+  matview: "Eliminar vista materializada…",
+  foreign: "Eliminar tabla foránea…",
+};
+
 const KEYWORD: Record<RelationKind, string> = {
   table: "TABLE",
   view: "VIEW",
@@ -109,14 +116,14 @@ export default function Sidebar(props: Props) {
       return {
         unlockKey: target.connId,
         request: {
-          noun: NOUN[target.kind],
+          noun: t(NOUN[target.kind]),
           name: target.name,
           display: `${target.schema}.${target.name}`,
           sql: (cascade) =>
             `DROP ${KEYWORD[target.kind]} ${quoteIdent(target.schema)}.${quoteIdent(target.name)}${cascade ? " CASCADE" : ""}`,
           option: {
-            label: "CASCADE: eliminar también lo que dependa de ella",
-            help: "Vistas, claves foráneas de otras tablas, etc. Sin esto, si algo depende de ella, la operación falla y no se borra nada.",
+            label: t("CASCADE: eliminar también lo que dependa de ella"),
+            help: t("Vistas, claves foráneas de otras tablas, etc. Sin esto, si algo depende de ella, la operación falla y no se borra nada."),
           },
           readOnly: connected[target.connId]?.readOnly ?? true,
           unlock: { database: databaseOfSession(target.connId), production },
@@ -128,17 +135,17 @@ export default function Sidebar(props: Props) {
     return {
       unlockKey: first ? first[0] : null,
       request: {
-        noun: "la base de datos",
+        noun: t("la base de datos"),
         name: target.database,
         display: target.database,
         sql: (force) => `DROP DATABASE ${quoteIdent(target.database)}${force ? " WITH (FORCE)" : ""}`,
         option: {
-          label: "Forzar: desconectar a quien esté usando la base",
-          help: "Cierra a la fuerza las demás conexiones a esa base (PostgreSQL 13 o superior). Sin esto, si alguien la usa, la operación falla.",
+          label: t("Forzar: desconectar a quien esté usando la base"),
+          help: t("Cierra a la fuerza las demás conexiones a esa base (PostgreSQL 13 o superior). Sin esto, si alguien la usa, la operación falla."),
         },
         readOnly: !sessions.some(([, info]) => !info.readOnly),
         unlock: first ? { database: databaseOfSession(first[0]), production: target.profile.production } : undefined,
-        lockedHint: "Conéctate a alguna base de este servidor para poder habilitar la escritura.",
+        lockedHint: t("Conéctate a alguna base de este servidor para poder habilitar la escritura."),
       },
     };
   };
@@ -363,9 +370,9 @@ export default function Sidebar(props: Props) {
           expanded={open}
           muted={schema.isSystem}
           onClick={() => clickSchema(id, schema.name)}
-          actions={<ActionButton title="Refrescar schema" icon="refresh" onClick={() => loadRelations(id, schema.name)} />}
+          actions={<ActionButton title={t("Refrescar schema")} icon="refresh" onClick={() => loadRelations(id, schema.name)} />}
         />
-        {open && loaded === undefined && <Row depth={3} label="Cargando…" muted />}
+        {open && loaded === undefined && <Row depth={3} label={t("Cargando…")} muted />}
         {open &&
           GROUPS.map((g) => {
             const items = relations.filter((r) => r.kind === g.kind);
@@ -376,7 +383,7 @@ export default function Sidebar(props: Props) {
               <div key={gk}>
                 <Row
                   depth={3}
-                  label={`${g.label} (${items.length})`}
+                  label={`${t(g.label)} (${items.length})`}
                   expandable
                   expanded={groupOpen}
                   onClick={() => toggleGroup(gk)}
@@ -386,7 +393,7 @@ export default function Sidebar(props: Props) {
             );
           })}
         {open && relations.length === 0 && loaded !== undefined && (
-          <Row depth={3} label={needle ? "Sin coincidencias" : "Vacío"} muted />
+          <Row depth={3} label={needle ? t("Sin coincidencias") : t("Vacío")} muted />
         )}
       </div>
     );
@@ -405,25 +412,25 @@ export default function Sidebar(props: Props) {
           iconClass={"ic-" + rel.kind}
           expandable
           expanded={open}
-          title="Doble clic para abrir los datos · clic derecho para más acciones"
+          title={t("Doble clic para abrir los datos · clic derecho para más acciones")}
           onClick={() => clickTable(id, schema, rel.name)}
           onDoubleClick={() => props.onOpenTable(id, schema, rel.name)}
           onContextMenu={(e) =>
             openMenu(e, [
-              { key: "open", label: "Abrir datos", icon: <Icon name="open" size={13} />, onClick: () => props.onOpenTable(id, schema, rel.name) },
-              { key: "ddl", label: "Ver DDL", icon: <Icon name="code" size={13} />, onClick: () => props.onOpenDdl(id, schema, rel.name, rel.kind) },
+              { key: "open", label: t("Abrir datos"), icon: <Icon name="open" size={13} />, onClick: () => props.onOpenTable(id, schema, rel.name) },
+              { key: "ddl", label: t("Ver DDL"), icon: <Icon name="code" size={13} />, onClick: () => props.onOpenDdl(id, schema, rel.name, rel.kind) },
               {
                 key: "select",
-                label: "Nueva consulta SELECT",
+                label: t("Nueva consulta SELECT"),
                 icon: <Icon name="terminal" size={13} />,
                 onClick: () =>
                   props.onOpenSql(id, `SELECT *\nFROM ${quoteIdent(schema)}.${quoteIdent(rel.name)}\nLIMIT 100;`),
               },
-              { key: "copy", label: "Copiar nombre", icon: <Icon name="copy" size={13} />, onClick: () => void copyText(`${schema}.${rel.name}`) },
+              { key: "copy", label: t("Copiar nombre"), icon: <Icon name="copy" size={13} />, onClick: () => void copyText(`${schema}.${rel.name}`) },
               { key: "sep", label: "", separator: true },
               {
                 key: "drop",
-                label: `Eliminar ${NOUN[rel.kind].replace(/^la /, "")}…`,
+                label: t(DROP_LABEL[rel.kind]),
                 icon: <Icon name="trash" size={13} />,
                 danger: true,
                 onClick: () => setDrop({ type: "object", connId: id, schema, name: rel.name, kind: rel.kind }),
@@ -432,12 +439,12 @@ export default function Sidebar(props: Props) {
           }
           actions={
             <>
-              <ActionButton title="Ver DDL" icon="code" onClick={() => props.onOpenDdl(id, schema, rel.name, rel.kind)} />
-              <ActionButton title="Abrir datos" icon="open" onClick={() => props.onOpenTable(id, schema, rel.name)} />
+              <ActionButton title={t("Ver DDL")} icon="code" onClick={() => props.onOpenDdl(id, schema, rel.name, rel.kind)} />
+              <ActionButton title={t("Abrir datos")} icon="open" onClick={() => props.onOpenTable(id, schema, rel.name)} />
             </>
           }
         />
-        {open && !columns && <Row depth={5} label="Cargando…" muted />}
+        {open && !columns && <Row depth={5} label={t("Cargando…")} muted />}
         {open &&
           columns?.map((c) => (
             <Row
@@ -464,12 +471,12 @@ export default function Sidebar(props: Props) {
         <span className="spacer" />
         <button
           className="ghost icon-btn"
-          title={`Tema: ${props.theme === "auto" ? "automático" : props.theme === "dark" ? "oscuro" : "claro"}`}
+          title={t("Tema: {name}", { name: props.theme === "auto" ? t("automático") : props.theme === "dark" ? t("oscuro") : t("claro") })}
           onClick={props.onCycleTheme}
         >
           {props.theme === "auto" ? <span className="theme-auto">A</span> : <Icon name={props.theme === "dark" ? "moon" : "sun"} size={14} />}
         </button>
-        <button className="ghost icon-btn" title="Nueva conexión" onClick={props.onNew}>
+        <button className="ghost icon-btn" title={t("Nueva conexión")} onClick={props.onNew}>
           <Icon name="plus" size={15} />
         </button>
         <button className="ghost icon-btn" title={t("Ajustes")} aria-label={t("Ajustes")} onClick={props.onSettings}>
@@ -478,15 +485,15 @@ export default function Sidebar(props: Props) {
       </div>
       <div className="search">
         <Icon name="search" size={13} />
-        <input placeholder="Filtrar tablas…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input placeholder={t("Filtrar tablas…")} value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       <div className="tree">
         {profiles.length === 0 && (
           <div className="empty-hint">
             <Icon name="server" size={28} />
-            <p>Aún no hay conexiones</p>
+            <p>{t("Aún no hay conexiones")}</p>
             <button className="primary" onClick={props.onNew}>
-              Crear una
+              {t("Crear una")}
             </button>
           </div>
         )}
@@ -521,7 +528,7 @@ export default function Sidebar(props: Props) {
             <div key={id}>
               <Row
                 depth={0}
-                label={busy.has(id) ? `${profile.name} — conectando…` : profile.name}
+                label={busy.has(id) ? t("{name} — conectando…", { name: profile.name }) : profile.name}
                 icon="server"
                 iconClass={isConnected ? "ic-on" : "ic-off"}
                 tag={profile.production ? { text: "PROD", tone: "danger" } : undefined}
@@ -533,22 +540,22 @@ export default function Sidebar(props: Props) {
                   <>
                     {isConnected && (
                       <>
-                        <ActionButton title="Nuevo editor SQL" icon="terminal" onClick={() => props.onOpenSql(sqlSession)} />
+                        <ActionButton title={t("Nuevo editor SQL")} icon="terminal" onClick={() => props.onOpenSql(sqlSession)} />
                         <ActionButton
-                          title="Recargar bases de datos"
+                          title={t("Recargar bases de datos")}
                           icon="refresh"
                           onClick={() => firstSession && loadDatabases(profile, firstSession)}
                         />
-                        <ActionButton title="Desconectar" icon="power" onClick={() => props.onDisconnect(id)} />
+                        <ActionButton title={t("Desconectar")} icon="power" onClick={() => props.onDisconnect(id)} />
                       </>
                     )}
-                    <ActionButton title="Editar" icon="edit" onClick={() => props.onEdit(profile)} />
-                    <ActionButton title="Eliminar" icon="trash" danger onClick={() => props.onDelete(profile)} />
+                    <ActionButton title={t("Editar")} icon="edit" onClick={() => props.onEdit(profile)} />
+                    <ActionButton title={t("Eliminar")} icon="trash" danger onClick={() => props.onDelete(profile)} />
                   </>
                 }
               />
               {open && rootError && <div className="tree-error">{rootError}</div>}
-              {open && !names && !rootError && <Row depth={1} label="Cargando…" muted />}
+              {open && !names && !rootError && <Row depth={1} label={t("Cargando…")} muted />}
               {open &&
                 names?.map((database) => {
                   const session = sessionKey(id, database);
@@ -559,29 +566,29 @@ export default function Sidebar(props: Props) {
                     <div key={session}>
                       <Row
                         depth={1}
-                        label={busy.has(session) ? `${database} — conectando…` : database}
+                        label={busy.has(session) ? t("{name} — conectando…", { name: database }) : database}
                         icon="database"
                         iconClass={info ? "ic-db" : "ic-off"}
-                        tag={info ? (info.readOnly ? { text: "solo lectura", tone: "ok" } : { text: "escritura", tone: "warn" }) : undefined}
+                        tag={info ? (info.readOnly ? { text: t("solo lectura"), tone: "ok" } : { text: t("escritura"), tone: "warn" }) : undefined}
                         expandable
                         expanded={dbOpen}
                         active={selectedConn === session}
                         muted={!info}
-                        title={info ? info.version : "Clic para conectar"}
+                        title={info ? info.version : t("Clic para conectar")}
                         onClick={() => clickDatabase(profile, database)}
                         onContextMenu={(e) =>
                           openMenu(e, [
                             ...(info
                               ? [
-                                  { key: "sql", label: "Nuevo editor SQL", icon: <Icon name="terminal" size={13} />, onClick: () => props.onOpenSql(session) },
-                                  { key: "reload", label: "Recargar schemas", icon: <Icon name="refresh" size={13} />, onClick: () => void loadSchemas(session) },
+                                  { key: "sql", label: t("Nuevo editor SQL"), icon: <Icon name="terminal" size={13} />, onClick: () => props.onOpenSql(session) },
+                                  { key: "reload", label: t("Recargar schemas"), icon: <Icon name="refresh" size={13} />, onClick: () => void loadSchemas(session) },
                                 ]
                               : []),
-                            { key: "copy", label: "Copiar nombre", icon: <Icon name="copy" size={13} />, onClick: () => void copyText(database) },
+                            { key: "copy", label: t("Copiar nombre"), icon: <Icon name="copy" size={13} />, onClick: () => void copyText(database) },
                             { key: "sep", label: "", separator: true },
                             {
                               key: "drop",
-                              label: "Eliminar base de datos…",
+                              label: t("Eliminar base de datos…"),
                               icon: <Icon name="trash" size={13} />,
                               danger: true,
                               onClick: () => setDrop({ type: "database", profile, database }),
@@ -591,14 +598,14 @@ export default function Sidebar(props: Props) {
                         actions={
                           info ? (
                             <>
-                              <ActionButton title="Nuevo editor SQL" icon="terminal" onClick={() => props.onOpenSql(session)} />
-                              <ActionButton title="Recargar schemas" icon="refresh" onClick={() => loadSchemas(session)} />
+                              <ActionButton title={t("Nuevo editor SQL")} icon="terminal" onClick={() => props.onOpenSql(session)} />
+                              <ActionButton title={t("Recargar schemas")} icon="refresh" onClick={() => loadSchemas(session)} />
                             </>
                           ) : undefined
                         }
                       />
                       {dbOpen && c?.error && <div className="tree-error">{c.error}</div>}
-                      {dbOpen && !c?.schemas && !c?.error && <Row depth={2} label="Cargando…" muted />}
+                      {dbOpen && !c?.schemas && !c?.error && <Row depth={2} label={t("Cargando…")} muted />}
                       {dbOpen && c?.schemas?.map((s) => renderSchema(session, s))}
                     </div>
                   );

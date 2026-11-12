@@ -9,6 +9,7 @@ import JsonText from "./JsonText";
 import JsonTree from "./JsonTree";
 import ResultGrid from "./ResultGrid";
 import SuggestInput from "./SuggestInput";
+import { t } from "../i18n";
 
 interface Props {
   profileId: string;
@@ -45,10 +46,7 @@ function savePref(key: string, value: string) {
 
 const PAGE_SIZES = [25, 50, 100];
 
-const HELP =
-  "Filtro rápido: campo=valor, campo!=valor, campo>5, campo>=5, campo<5, campo~texto (contiene, sin distinguir mayúsculas), " +
-  "separados por espacios. Fechas como 2026-03-01 y _id como 24 caracteres hex se convierten solos. " +
-  'También puedes escribir un filtro JSON: { "estado": "OPEN", "edad": { "$gt": 30 } }.';
+const HELP = 'Filtro rápido: campo=valor, campo!=valor, campo>5, campo>=5, campo<5, campo~texto (contiene, sin distinguir mayúsculas), separados por espacios. Fechas como 2026-03-01 y _id como 24 caracteres hex se convierten solos. También puedes escribir un filtro JSON: { "estado": "OPEN", "edad": { "$gt": 30 } }.';
 
 export default function MongoCollectionTab({ profileId, database, collection, production }: Props) {
   const [filterText, setFilterText] = useState("");
@@ -170,12 +168,14 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
   const filtered = applied.filter !== "";
   const total =
     exact !== null
-      ? `${exact.toLocaleString()} ${exact === 1 ? "documento" : "documentos"}${filtered ? " con el filtro" : ""}`
+      ? exact === 1
+        ? t(filtered ? "1 documento con el filtro" : "1 documento")
+        : t(filtered ? "{n} documentos con el filtro" : "{n} documentos", { n: exact.toLocaleString() })
       : filtered
-        ? "con filtro: usa Contar exacto"
+        ? t("con filtro: usa Contar exacto")
         : estimated !== null
-          ? `≈ ${estimated.toLocaleString()} documentos (estimado)`
-          : "total desconocido";
+          ? t("≈ {n} documentos (estimado)", { n: estimated.toLocaleString() })
+          : t("total desconocido");
 
   const viewed = viewing !== null ? docs[viewing] : null;
   const copy = async (text: string, label: string) => {
@@ -187,12 +187,12 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
   return (
     <div className={"tab-body" + (production ? " is-prod" : "")}>
       <div className="toolbar wrap">
-        <div className="segmented" role="group" aria-label="Vista">
+        <div className="segmented" role="group" aria-label={t("Vista")}>
           <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>
-            Tabla
+            {t("Tabla")}
           </button>
           <button className={view === "docs" ? "active" : ""} onClick={() => setView("docs")}>
-            Documentos
+            {t("Documentos")}
           </button>
           <button className={view === "json" ? "active" : ""} onClick={() => setView("json")}>
             JSON
@@ -203,13 +203,13 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         </span>
         <span
           className="chip chip-plain"
-          title="Hyrax solo lee en esta versión. MongoDB no tiene solo lectura por sesión: la protección real es un usuario con el rol read."
+          title={t("Hyrax solo lee en esta versión. MongoDB no tiene solo lectura por sesión: la protección real es un usuario con el rol read.")}
         >
-          <Icon name="lock" size={12} /> Solo lectura
+          <Icon name="lock" size={12} /> {t("Solo lectura")}
         </span>
         <span className="spacer" />
         <button onClick={() => setReloadKey((k) => k + 1)} disabled={loading}>
-          <Icon name="refresh" size={13} /> Refrescar
+          <Icon name="refresh" size={13} /> {t("Refrescar")}
         </button>
       </div>
 
@@ -217,35 +217,35 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         <div className="mongo-query-row">
           <SuggestInput
             className="mongo-filter"
-            ariaLabel="Filtro"
+            ariaLabel={t("Filtro")}
             value={filterText}
-            placeholder='Filtro: estado=ABIERTO edad>30  ·  o JSON { "estado": "ABIERTO" }  ·  Ctrl+Espacio sugiere'
-            title={HELP}
+            placeholder={t('Filtro: estado=ABIERTO edad>30  ·  o JSON { "estado": "ABIERTO" }  ·  Ctrl+Espacio sugiere')}
+            title={t(HELP)}
             onChange={setFilterText}
             onSubmit={search}
             suggest={(text, caret, force) => suggestFilter(text, caret, sample, force)}
           />
           <button className="primary" onClick={search} disabled={loading}>
-            Buscar
+            {t("Buscar")}
           </button>
           <button className="ghost" onClick={() => setOptionsOpen((o) => !o)} aria-expanded={optionsOpen}>
-            Orden y campos
+            {t("Orden y campos")}
           </button>
         </div>
         {optionsOpen && (
           <div className="mongo-query-row">
             <SuggestInput
-              ariaLabel="Orden"
+              ariaLabel={t("Orden")}
               value={sortText}
-              placeholder="Orden: -creado nombre  ·  o { &quot;creado&quot;: -1 }"
+              placeholder={t('Orden: -creado nombre  ·  o { "creado": -1 }')}
               onChange={setSortText}
               onSubmit={search}
               suggest={(text, caret, force) => suggestFields(text, caret, sample, force)}
             />
             <SuggestInput
-              ariaLabel="Campos"
+              ariaLabel={t("Campos")}
               value={projectionText}
-              placeholder="Campos: nombre email -_id"
+              placeholder={t("Campos: nombre email -_id")}
               onChange={setProjectionText}
               onSubmit={search}
               suggest={(text, caret, force) => suggestFields(text, caret, sample, force)}
@@ -269,7 +269,7 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
       {truncated && (
         <div className="alert alert-warn">
           <Icon name="alert" size={15} />
-          <span>La página se cortó por tamaño (documentos muy grandes). Usa menos documentos por página o una proyección.</span>
+          <span>{t("La página se cortó por tamaño (documentos muy grandes). Usa menos documentos por página o una proyección.")}</span>
         </div>
       )}
 
@@ -277,10 +277,10 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         <div className="grid-host">
           {!loading && !error && docs.length === 0 ? (
             <div className="empty-hint">
-              <p>{filtered ? "Ningún documento coincide con el filtro." : "La colección está vacía."}</p>
+              <p>{filtered ? t("Ningún documento coincide con el filtro.") : t("La colección está vacía.")}</p>
             </div>
           ) : view !== "table" ? (
-            <div className="json-list" aria-label={view === "json" ? "Documentos en JSON" : "Lista de documentos"}>
+            <div className="json-list" aria-label={view === "json" ? t("Documentos en JSON") : t("Lista de documentos")}>
               {docs.map((d, i) => (
                 <section key={skip + i} className="json-doc">
                   <header>
@@ -288,7 +288,7 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
                       #{(skip + i + 1).toLocaleString()} · {describe(d._id).text}
                     </span>
                     <button className="ghost small" onClick={() => void copy(textOf(view, d), `doc${i}`)}>
-                      <Icon name="copy" size={12} /> {copied === `doc${i}` ? "Copiado" : "Copiar"}
+                      <Icon name="copy" size={12} /> {copied === `doc${i}` ? t("Copiado") : t("Copiar")}
                     </button>
                   </header>
                   <JsonText text={textOf(view, d)} kind={view === "json" ? "json" : "shell"} />
@@ -302,25 +302,25 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
               selectionActions={(rows) =>
                 rows.length === 1 ? (
                   <button className="small" onClick={() => setViewing(rows[0])}>
-                    <Icon name="form" size={12} /> Ver documento
+                    <Icon name="form" size={12} /> {t("Ver documento")}
                   </button>
                 ) : null
               }
             />
           )}
-          {loading && <div className="loading">Cargando…</div>}
+          {loading && <div className="loading">{t("Cargando…")}</div>}
         </div>
         {viewed && (
-          <aside className="doc-viewer" aria-label="Documento">
+          <aside className="doc-viewer" aria-label={t("Documento")}>
             <div className="doc-viewer-head">
-              <strong>Documento</strong>
+              <strong>{t("Documento")}</strong>
               <span className="muted">{describe(viewed._id).text}</span>
-              <div className="segmented" role="group" aria-label="Formato del documento">
+              <div className="segmented" role="group" aria-label={t("Formato del documento")}>
                 <button className={viewerMode === "tree" ? "active" : ""} onClick={() => setViewerMode("tree")}>
-                  Árbol
+                  {t("Árbol")}
                 </button>
                 <button className={viewerMode === "doc" ? "active" : ""} onClick={() => setViewerMode("doc")}>
-                  Documento
+                  {t("Documento")}
                 </button>
                 <button className={viewerMode === "json" ? "active" : ""} onClick={() => setViewerMode("json")}>
                   JSON
@@ -334,15 +334,15 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
                 }
                 title={
                   viewerMode === "tree"
-                    ? "Copia el documento como JSON extendido canónico (conserva todos los tipos BSON)"
+                    ? t("Copia el documento como JSON extendido canónico (conserva todos los tipos BSON)")
                     : viewerMode === "doc"
-                      ? "Copia el documento al estilo de mongosh"
-                      : "Copia el documento como JSON"
+                      ? t("Copia el documento al estilo de mongosh")
+                      : t("Copia el documento como JSON")
                 }
               >
-                <Icon name="copy" size={12} /> {copied === "viewer" ? "Copiado" : "Copiar JSON"}
+                <Icon name="copy" size={12} /> {copied === "viewer" ? t("Copiado") : t("Copiar JSON")}
               </button>
-              <button className="ghost icon-btn" onClick={() => setViewing(null)} title="Cerrar">
+              <button className="ghost icon-btn" onClick={() => setViewing(null)} title={t("Cerrar")}>
                 <Icon name="close" size={12} />
               </button>
             </div>
@@ -360,17 +360,17 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
       <div className="statusbar">
         <button
           className="icon-btn"
-          title="Página anterior"
+          title={t("Página anterior")}
           disabled={pageIndex === 0 || loading}
           onClick={() => setPageIndex(pageIndex - 1)}
         >
           <Icon name="prev" size={14} />
         </button>
-        <button className="icon-btn" title="Página siguiente" disabled={!hasNext || loading} onClick={() => setPageIndex(pageIndex + 1)}>
+        <button className="icon-btn" title={t("Página siguiente")} disabled={!hasNext || loading} onClick={() => setPageIndex(pageIndex + 1)}>
           <Icon name="next" size={14} />
         </button>
         <select
-          aria-label="Documentos por página"
+          aria-label={t("Documentos por página")}
           value={pageSize}
           onChange={(e) => {
             setPageIndex(0);
@@ -379,7 +379,7 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
         >
           {PAGE_SIZES.map((s) => (
             <option key={s} value={s}>
-              {s} por página
+              {t("{n} por página", { n: s })}
             </option>
           ))}
         </select>
@@ -387,7 +387,7 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
           {docs.length > 0 ? `${(skip + 1).toLocaleString()}–${(skip + docs.length).toLocaleString()}` : "0"} · {total}
         </span>
         <button onClick={() => void countExact()} disabled={counting}>
-          {counting ? "Contando…" : "Contar exacto"}
+          {counting ? t("Contando…") : t("Contar exacto")}
         </button>
         <span className="spacer" />
         {elapsed !== null && <span className="muted">{elapsed} ms</span>}
