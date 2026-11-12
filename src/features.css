@@ -889,3 +889,40 @@ select.small {
   background: var(--surface-3);
   color: var(--text-soft);
 }
+
+.json-list {
+  height: 100%;
+  overflow: auto;
+  padding: 8px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.json-doc {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 220px;
+}
+.json-doc header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.json-text {
+  margin: 0;
+  padding: 8px 12px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: var(--mono-weight);
+  line-height: 1.55;
+  color: var(--text-soft);
+}
+.doc-viewer-body .json-text {
+  padding: 0 6px;
+}

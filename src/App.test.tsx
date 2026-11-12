@@ -1972,3 +1972,54 @@ describe("MongoDB: explorar", () => {
     expect(calls.some((c) => c.cmd === "disconnect_profile" && c.args.id === "m1")).toBe(true);
   });
 });
+
+describe("vista JSON de MongoDB", () => {
+  const openCollection = async (user: ReturnType<typeof userEvent.setup>) => {
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+    await screen.findByText("Ana");
+  };
+
+  it("la colección alterna entre tabla y una lista de documentos en JSON legible", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    const view = screen.getByRole("group", { name: "Vista" });
+    expect(within(view).getByRole("button", { name: "Tabla" }).className).toContain("active");
+
+    await user.click(within(view).getByRole("button", { name: "JSON" }));
+    const list = await screen.findByLabelText("Documentos en JSON");
+    // Los números salen como números, no como {"$numberInt":"30"}; los tipos sin equivalente en JSON se conservan.
+    expect(list.textContent).toContain('"name": "Ana"');
+    expect(list.textContent).toContain('"age": 30');
+    expect(list.textContent).toContain('"$oid": "507f1f77bcf86cd799439011"');
+    expect(list.textContent).not.toContain("$numberInt");
+    expect(within(list).getAllByRole("button", { name: /Copiar/ })).toHaveLength(3);
+    expect(screen.queryByRole("table")).toBeNull();
+
+    await user.click(within(view).getByRole("button", { name: "Tabla" }));
+    expect(await screen.findByText("Beto")).toBeTruthy();
+    expect(screen.queryByLabelText("Documentos en JSON")).toBeNull();
+  });
+
+  it("el visor de un documento alterna entre árbol y JSON", async () => {
+    const user = userEvent.setup();
+    await openCollection(user);
+    const row = screen.getByText("Ana").closest("tr") as HTMLElement;
+    await user.click(within(row).getAllByRole("cell")[0]);
+    await user.click(await screen.findByRole("button", { name: "Ver documento" }));
+
+    const viewer = await screen.findByRole("complementary", { name: "Documento" });
+    expect(within(viewer).getByText("ObjectId")).toBeTruthy(); // árbol por omisión
+
+    await user.click(within(viewer).getByRole("button", { name: "JSON" }));
+    expect(viewer.textContent).toContain('"city": "Lima"');
+    expect(viewer.textContent).toContain('"age": 30');
+    expect(within(viewer).queryByText("ObjectId")).toBeNull();
+
+    await user.click(within(viewer).getByRole("button", { name: "Árbol" }));
+    expect(within(viewer).getByText("ObjectId")).toBeTruthy();
+  });
+});
