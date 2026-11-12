@@ -128,6 +128,14 @@ pub async fn find(client: &Client, database: &str, collection: &str, p: FindPara
     Ok(FindPage { documents, truncated, elapsed_ms: started.elapsed().as_millis() as u64 })
 }
 
+/// Crea una colección vacía. Devuelve la operación tal como se escribiría en mongosh.
+pub async fn create_collection(client: &Client, database: &str, name: &str) -> Result<String, String> {
+    query::validate_database(database)?;
+    query::validate_new_collection(name)?;
+    client.database(database).create_collection(name).await.map_err(err)?;
+    Ok(format!("db.createCollection({})", serde_json::Value::String(name.to_string())))
+}
+
 /// Ejecuta un pipeline de agregación (ya validado) y devuelve hasta `limit` documentos.
 pub async fn aggregate(
     client: &Client,
@@ -250,6 +258,13 @@ mod tests {
         let colls = list_collections(&client, DB).await.unwrap();
         let kinds: Vec<_> = colls.iter().map(|c| (c.name.as_str(), c.kind.as_str())).collect();
         assert_eq!(kinds, vec![("adults", "view"), ("people", "collection")]);
+
+        // Crear una colección vacía; repetirla o usar un nombre reservado falla con un mensaje claro
+        let op = create_collection(&client, DB, "nueva").await.unwrap();
+        assert_eq!(op, r#"db.createCollection("nueva")"#);
+        assert!(list_collections(&client, DB).await.unwrap().iter().any(|c| c.name == "nueva"));
+        assert!(create_collection(&client, DB, "nueva").await.unwrap_err().contains("MongoDB"));
+        assert!(create_collection(&client, DB, "system.x").await.is_err());
 
         // Filtro, orden y paginación
         let page = find(&client, DB, "people", params(doc! {"age": {"$gte": 30}}, doc! {"age": -1}, doc! {}, 0, 10))

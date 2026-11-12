@@ -311,6 +311,8 @@ export const api = {
     limit: number,
     timeoutMs = 0,
   ) => invoke<MongoPage>("mongo_find", { id, database, collection, filter, sort, projection, skip, limit, timeoutMs }),
+  mongoCreateCollection: (id: string, database: string, name: string, confirm: string) =>
+    invoke<string>("mongo_create_collection", { id, database, name, confirm }),
   mongoCount: (id: string, database: string, collection: string, filter: string, timeoutMs = 0) =>
     invoke<number>("mongo_count", { id, database, collection, filter, timeoutMs }),
   mongoEstimatedCount: (id: string, database: string, collection: string) =>

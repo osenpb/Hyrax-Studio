@@ -333,6 +333,22 @@ pub async fn mongo_aggregate(
     mongo::browse::aggregate(&s.client, &database, &collection, stages, limit, timeout).await
 }
 
+/// Crea una colección vacía. En producción hay que escribir el nombre de la base como confirmación.
+#[tauri::command]
+pub async fn mongo_create_collection(
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+    name: String,
+    confirm: String,
+) -> Result<String, String> {
+    let s = mongo_session(&state, &id).await?;
+    if s.production && confirm != database {
+        return Err("En producción hay que escribir el nombre de la base de datos para confirmar.".to_string());
+    }
+    mongo::browse::create_collection(&s.client, &database, &name).await
+}
+
 #[tauri::command]
 pub async fn mongo_count(
     state: State<'_, Sessions>,

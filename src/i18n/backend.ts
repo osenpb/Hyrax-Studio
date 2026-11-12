@@ -208,6 +208,9 @@ const RULES: [string, string][] = [
   ["La etapa {} ({}) no está disponible en la consola.", "Stage {1} ({2}) is not available in the console."],
   ["La etapa {} tiene un tipo no válido: {}", "Stage {1} has an invalid type: {2}"],
   ["La etapa {} debe ser un objeto.", "Stage {1} must be an object."],
+  ["El nombre de la colección no puede empezar ni terminar con espacios.", "The collection name cannot start or end with spaces."],
+  ["El prefijo «system.» está reservado para MongoDB.", "The “system.” prefix is reserved for MongoDB."],
+  ["En producción hay que escribir el nombre de la base de datos para confirmar.", "In production you must type the database name to confirm."],
   // --- genéricas: van al final para no tapar a las específicas ---
   ["No se pudo borrar {}: {}", "Could not delete {1}: {2}"],
 ];

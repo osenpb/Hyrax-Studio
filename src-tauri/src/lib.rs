@@ -61,6 +61,7 @@ pub fn run() {
             commands::mongo_disconnect,
             commands::mongo_list_databases,
             commands::mongo_aggregate,
+            commands::mongo_create_collection,
             commands::mongo_list_collections,
             commands::mongo_find,
             commands::mongo_count,

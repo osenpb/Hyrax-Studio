@@ -141,6 +141,17 @@ pub fn effective_timeout(requested_ms: u64, production: bool) -> Duration {
     Duration::from_millis(ms.min(cap))
 }
 
+/// Nombre de una colección nueva: las reglas de siempre, sin el prefijo reservado `system.` ni espacios en los extremos.
+pub fn validate_new_collection(name: &str) -> Result<(), String> {
+    if name != name.trim() {
+        return Err("El nombre de la colección no puede empezar ni terminar con espacios.".to_string());
+    }
+    if name.starts_with("system.") {
+        return Err("El prefijo «system.» está reservado para MongoDB.".to_string());
+    }
+    validate_collection(name)
+}
+
 /// Nombre de base de datos: sin los caracteres que MongoDB prohíbe.
 pub fn validate_database(name: &str) -> Result<(), String> {
     if name.is_empty() || name.len() > 63 || name.chars().any(|c| "/\\. \"$*<>:|?\0".contains(c)) {
@@ -258,6 +269,15 @@ mod tests {
         assert_eq!(effective_timeout(30_000, true), Duration::from_millis(30_000));
         assert_eq!(effective_timeout(u64::MAX, true), Duration::from_millis(PROD_MAX_TIMEOUT_MS));
         assert_eq!(effective_timeout(u64::MAX, false), Duration::from_millis(600_000));
+    }
+
+    #[test]
+    fn new_collection_names_reject_reserved_and_padded_ones() {
+        assert!(validate_new_collection("clientes").is_ok());
+        assert!(validate_new_collection("a.b").is_ok());
+        for bad in ["", " x", "x ", "system.users", "a$b", "a b"] {
+            assert!(validate_new_collection(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
