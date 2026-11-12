@@ -1009,3 +1009,13 @@ select.small {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+.tree-folder-body {
+  padding-left: 8px;
+}
+.tree-folder-body[hidden] {
+  display: none;
+}
+.tree-folder > .tree-row {
+  font-weight: 600;
+}

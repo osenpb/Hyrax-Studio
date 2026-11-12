@@ -93,6 +93,8 @@ const PATHS: Record<string, ReactNode> = {
   download: <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />,
   filter: <path d="M4 5h16l-6 8v6l-4-2v-4z" />,
   prev: <path d="M15 6l-6 6 6 6" />,
+  up: <path d="M6 15l6-6 6 6" />,
+  down: <path d="M6 9l6 6 6-6" />,
   next: <path d="M9 6l6 6-6 6" />,
   alert: (
     <>

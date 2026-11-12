@@ -23,6 +23,32 @@ import { copyText } from "../clipboard";
 import { t } from "../i18n";
 import { databaseOfSession } from "../api";
 
+/** Las carpetas de la barra lateral son una por motor; solo se recuerdan su orden y cuáles están plegadas. */
+type FolderEngine = "postgres" | "mongodb";
+interface FolderPrefs {
+  order: FolderEngine[];
+  collapsed: FolderEngine[];
+}
+const FOLDERS_KEY = "hyrax-sidebar-folders";
+const FOLDER_LABEL: Record<FolderEngine, string> = { postgres: "PostgreSQL", mongodb: "MongoDB" };
+
+function loadFolderPrefs(): FolderPrefs {
+  const fallback: FolderPrefs = { order: ["postgres", "mongodb"], collapsed: [] };
+  try {
+    const raw = JSON.parse(localStorage.getItem(FOLDERS_KEY) ?? "null");
+    const valid = (v: unknown): v is FolderEngine => v === "postgres" || v === "mongodb";
+    if (raw && Array.isArray(raw.order)) {
+      const order: FolderEngine[] = [...new Set((raw.order as unknown[]).filter(valid))];
+      for (const e of fallback.order) if (!order.includes(e)) order.push(e);
+      const collapsed = Array.isArray(raw.collapsed) ? (raw.collapsed as unknown[]).filter(valid) : [];
+      return { order, collapsed };
+    }
+  } catch {
+    // Sin almacenamiento o con datos dañados: se usa el orden por omisión.
+  }
+  return fallback;
+}
+
 const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
 const NOUN: Record<RelationKind, string> = {
@@ -107,6 +133,42 @@ export default function Sidebar(props: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [drop, setDrop] = useState<DropTarget | null>(null);
   const [creating, setCreating] = useState<ConnectionProfile | null>(null);
+  const [folderPrefs, setFolderPrefs] = useState<FolderPrefs>(loadFolderPrefs);
+
+  const updateFolders = (next: FolderPrefs) => {
+    setFolderPrefs(next);
+    try {
+      localStorage.setItem(FOLDERS_KEY, JSON.stringify(next));
+    } catch {
+      // El orden de las carpetas es una comodidad: si no se puede guardar, solo dura esta sesión.
+    }
+  };
+  const groups = folderPrefs.order
+    .map((engine) => ({
+      engine,
+      profiles: profiles.filter((p) => (p.engine ?? "postgres") === engine),
+    }))
+    .filter((g) => g.profiles.length > 0);
+  const moveFolder = (engine: FolderEngine, delta: -1 | 1) => {
+    const order = [...folderPrefs.order];
+    const from = order.indexOf(engine);
+    const visible = groups.map((g) => g.engine);
+    const neighbour = visible[visible.indexOf(engine) + delta];
+    if (from < 0 || neighbour === undefined) return;
+    const to = order.indexOf(neighbour);
+    order[from] = neighbour;
+    order[to] = engine;
+    updateFolders({ ...folderPrefs, order });
+  };
+  const toggleFolder = (engine: FolderEngine, open?: boolean) => {
+    const isCollapsed = folderPrefs.collapsed.includes(engine);
+    const wantOpen = open ?? isCollapsed;
+    if (wantOpen === !isCollapsed) return;
+    updateFolders({
+      ...folderPrefs,
+      collapsed: wantOpen ? folderPrefs.collapsed.filter((e) => e !== engine) : [...folderPrefs.collapsed, engine],
+    });
+  };
 
   const openMenu = (e: React.MouseEvent, items: MenuItem[]) => {
     e.preventDefault();
@@ -328,6 +390,7 @@ export default function Sidebar(props: Props) {
     if (!request) return;
     const profile = props.profiles.find((p) => p.id === request.id);
     // Las conexiones de MongoDB atienden la petición en su propio nodo.
+    if (profile) toggleFolder(profile.engine ?? "postgres", true);
     if (profile && profile.engine !== "mongodb") void clickConnection(profile);
     // Solo debe reaccionar a una petición nueva, no a cada cambio de perfiles o sesiones.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -523,7 +586,42 @@ export default function Sidebar(props: Props) {
             </button>
           </div>
         )}
-        {profiles.map((profile) => {
+        {groups.map((group) => {
+          const folderOpen = !folderPrefs.collapsed.includes(group.engine);
+          const position = groups.findIndex((g) => g.engine === group.engine);
+          return (
+            <div key={group.engine} className="tree-folder">
+              <Row
+                depth={0}
+                label={FOLDER_LABEL[group.engine]}
+                icon="folder"
+                iconClass="ic-schema"
+                tag={{ text: String(group.profiles.length), tone: "info" }}
+                expandable
+                expanded={folderOpen}
+                title={t("Carpeta de conexiones {name}", { name: FOLDER_LABEL[group.engine] })}
+                onClick={() => toggleFolder(group.engine)}
+                onContextMenu={(e) =>
+                  openMenu(e, [
+                    ...(position > 0
+                      ? [{ key: "up", label: t("Subir carpeta"), icon: <Icon name="up" size={13} />, onClick: () => moveFolder(group.engine, -1) }]
+                      : []),
+                    ...(position < groups.length - 1
+                      ? [{ key: "down", label: t("Bajar carpeta"), icon: <Icon name="down" size={13} />, onClick: () => moveFolder(group.engine, 1) }]
+                      : []),
+                  ])
+                }
+                actions={
+                  <>
+                    {position > 0 && <ActionButton title={t("Subir carpeta")} icon="up" onClick={() => moveFolder(group.engine, -1)} />}
+                    {position < groups.length - 1 && (
+                      <ActionButton title={t("Bajar carpeta")} icon="down" onClick={() => moveFolder(group.engine, 1)} />
+                    )}
+                  </>
+                }
+              />
+              <div className="tree-folder-body" hidden={!folderOpen}>
+        {group.profiles.map((profile) => {
           if (profile.engine === "mongodb") {
             return (
               <MongoNode
@@ -672,6 +770,10 @@ export default function Sidebar(props: Props) {
                     </div>
                   );
                 })}
+            </div>
+          );
+        })}
+              </div>
             </div>
           );
         })}

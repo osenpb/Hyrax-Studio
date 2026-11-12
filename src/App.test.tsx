@@ -2707,3 +2707,74 @@ describe("crear una base de datos", () => {
     expect(await screen.findByRole("menuitem", { name: /Crear base de datos/ })).toBeTruthy();
   });
 });
+
+
+describe("carpetas de conexiones por motor", () => {
+  const folderLabels = () =>
+    Array.from((document.querySelector("aside") as HTMLElement).querySelectorAll(".tree-folder > .tree-row .label")).map(
+      (el) => el.textContent,
+    );
+
+  it("agrupa las conexiones en una carpeta por motor y ya no etiqueta cada una con «Mongo»", async () => {
+    localStorage.removeItem("hyrax-sidebar-folders");
+    withMongoProfile = true;
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+
+    expect(folderLabels()).toEqual(["PostgreSQL", "MongoDB"]);
+    const pgBody = inSidebar().getByText("dev_erp").closest(".tree-folder-body");
+    const mongoBody = inSidebar().getByText("mongo_demo").closest(".tree-folder-body");
+    expect(pgBody).not.toBe(mongoBody);
+    expect(inSidebar().queryByText("Mongo")).toBeNull();
+  });
+
+  it("sin conexiones de un motor no aparece su carpeta", async () => {
+    localStorage.removeItem("hyrax-sidebar-folders");
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+    expect(folderLabels()).toEqual(["PostgreSQL"]);
+  });
+
+  it("bajar o subir una carpeta cambia el orden y se recuerda", async () => {
+    localStorage.removeItem("hyrax-sidebar-folders");
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+    // La primera carpeta solo puede bajar y la última solo subir.
+    expect(inSidebar().getAllByTitle("Bajar carpeta")).toHaveLength(1);
+    expect(inSidebar().getAllByTitle("Subir carpeta")).toHaveLength(1);
+
+    await user.click(inSidebar().getByTitle("Bajar carpeta"));
+    expect(folderLabels()).toEqual(["MongoDB", "PostgreSQL"]);
+    expect(JSON.parse(localStorage.getItem("hyrax-sidebar-folders") ?? "{}").order).toEqual(["mongodb", "postgres"]);
+
+    await user.click(inSidebar().getByTitle("Subir carpeta"));
+    expect(folderLabels()).toEqual(["PostgreSQL", "MongoDB"]);
+  });
+
+  it("el orden guardado se aplica al abrir y una carpeta se pliega sin perder su contenido", async () => {
+    localStorage.setItem("hyrax-sidebar-folders", JSON.stringify({ order: ["mongodb", "postgres"], collapsed: [] }));
+    withMongoProfile = true;
+    const user = userEvent.setup();
+    render(<App />);
+    await inSidebar().findByText("dev_erp");
+    expect(folderLabels()).toEqual(["MongoDB", "PostgreSQL"]);
+
+    await user.click(inSidebar().getByText("PostgreSQL"));
+    expect(inSidebar().getByText("dev_erp").closest(".tree-folder-body")?.hasAttribute("hidden")).toBe(true);
+    expect(JSON.parse(localStorage.getItem("hyrax-sidebar-folders") ?? "{}").collapsed).toEqual(["postgres"]);
+
+    await user.click(inSidebar().getByText("PostgreSQL"));
+    expect(inSidebar().getByText("dev_erp").closest(".tree-folder-body")?.hasAttribute("hidden")).toBe(false);
+  });
+
+  it("conectar desde el inicio abre la carpeta plegada de esa conexión", async () => {
+    localStorage.setItem("hyrax-sidebar-folders", JSON.stringify({ order: ["postgres", "mongodb"], collapsed: ["postgres"] }));
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con dev_erp/ }));
+    await inSidebar().findByText("erp_db");
+    expect(inSidebar().getByText("dev_erp").closest(".tree-folder-body")?.hasAttribute("hidden")).toBe(false);
+  });
+});

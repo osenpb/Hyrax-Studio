@@ -127,7 +127,7 @@ export default function MongoNode(props: Props) {
         label={busy ? t("{name} — conectando…", { name: profile.name }) : profile.name}
         icon="server"
         iconClass={connected ? "ic-on" : "ic-off"}
-        tag={profile.production ? { text: "PROD", tone: "danger" } : { text: "Mongo", tone: "info" }}
+        tag={profile.production ? { text: "PROD", tone: "danger" } : undefined}
         expandable={connected}
         expanded={open}
         title={`${profile.host}:${profile.port}`}
