@@ -6,7 +6,7 @@
 
 <p align="center">
   A lightweight desktop database client, built so you don't break production.<br />
-  PostgreSQL today; MongoDB connections can be created and tested, and its explorer is next.<br />
+  PostgreSQL today, and MongoDB read-only exploration.<br />
   Rust + Tauri 2 on the backend, React + TypeScript on the front end.
 </p>
 
@@ -37,6 +37,11 @@ DataGrip and DBeaver do a lot, sometimes too much, and they are heavy. Hyrax Stu
 - Import CSV/TSV/JSON with column mapping and a dry run first; export to CSV, JSON or `INSERT` statements, streamed.
 - Pin and compare results; row view as a form.
 - Right-click on tables, views and databases: open, view DDL, new query, copy name and drop (requires write mode, shows the SQL and asks you to type the name).
+
+**MongoDB (read-only)**
+- Tree of databases, collections and views; collection tab with a quick filter (`status=OPEN age>30 name~ana`) or JSON filter, sort, fields and paging, estimated or exact counts.
+- Document viewer that shows every BSON type (ObjectId, int, long, decimal, date…). Filters that run JavaScript on the server (`$where`, `$function`) are rejected.
+- PostgreSQL and MongoDB connections can be open at the same time.
 
 **Connect**
 - A start screen with your saved connections (engine badge, production mark, most recently used first) and a "New connection" button per engine.
@@ -85,7 +90,7 @@ What you should know before trusting Hyrax:
 - ER diagrams, schema comparison, session monitor, role and privilege management.
 - Dropping schemas; "Go to object" does not list indexes, constraints or triggers as entries of their own.
 - Context-aware keyword autocomplete, a scripts panel and custom snippets.
-- **MongoDB**: you can already create, save and test connections (local, Atlas `mongodb+srv`, replica sets, TLS with a custom CA), but browsing databases and collections is not available yet; it is the next phase ([plan](docs/MONGODB.md)). A company server with a private CA needs its CA as a PEM file (MongoDB uses its own certificate roots, not the Windows store).
+- **MongoDB** is read-only for now: you can connect (local, Atlas `mongodb+srv`, replica sets, TLS with a custom CA), browse databases and collections, filter, sort and page through documents, and inspect each one with its BSON types. There is no query console, `explain`, index view, export or writing yet ([plan](docs/MONGODB.md)). MongoDB has no per-session read-only mode, so use a user with the `read` role. A company server with a private CA needs its CA as a PEM file (MongoDB uses its own certificate roots, not the Windows store).
 
 The full plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
