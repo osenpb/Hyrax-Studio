@@ -29,6 +29,7 @@ pub fn run() {
             commands::test_connection,
             commands::connect_profile,
             commands::disconnect,
+            commands::reconnect_profile,
             commands::disconnect_profile,
             commands::set_read_only,
             commands::cancel_query,

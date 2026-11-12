@@ -377,6 +377,45 @@ pub async fn connect_profile(
     Ok(ConnectInfo { version, read_only })
 }
 
+/// Vuelve a abrir cada sesión abierta de una conexión con las credenciales guardadas, sin cerrar las pestañas.
+/// La sesión vieja se reemplaza solo cuando la nueva conectó; si una base falla, esa conserva la anterior.
+/// Las sesiones nuevas arrancan en solo lectura, como al conectar por primera vez.
+#[tauri::command]
+pub async fn reconnect_profile(
+    app: AppHandle,
+    state: State<'_, Sessions>,
+    id: String,
+) -> Result<ReconnectResult, String> {
+    let prefix = format!("{id}::");
+    let keys: Vec<String> = state.0.lock().await.keys().filter(|k| k.starts_with(&prefix)).cloned().collect();
+    let mut result = ReconnectResult { reconnected: Vec::new(), failed: Vec::new() };
+    if keys.is_empty() {
+        return Ok(result);
+    }
+    let mut profile = profiles::find(&config_dir(&app)?, &id)?;
+    load_secrets(&mut profile)?;
+    for key in keys {
+        let database = key[prefix.len()..].to_string();
+        let mut p = profile.clone();
+        p.database = database.clone();
+        let opened = async {
+            let session = db::connect(&p).await?;
+            let version = db::server_version(&session.client).await?;
+            let read_only = db::is_read_only(&session.client).await?;
+            Ok::<_, String>((session, ConnectInfo { version, read_only }))
+        }
+        .await;
+        match opened {
+            Ok((session, info)) => {
+                state.0.lock().await.insert(key.clone(), Arc::new(session));
+                result.reconnected.push(ReconnectedSession { key, info });
+            }
+            Err(error) => result.failed.push(ReconnectFailure { database, error }),
+        }
+    }
+    Ok(result)
+}
+
 #[tauri::command]
 pub async fn disconnect(state: State<'_, Sessions>, id: String) -> Result<(), String> {
     state.0.lock().await.remove(&id);

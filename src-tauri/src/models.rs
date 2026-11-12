@@ -166,6 +166,29 @@ pub struct ConnectInfo {
     pub read_only: bool,
 }
 
+/// Una sesión de PostgreSQL abierta de nuevo con las credenciales guardadas.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectedSession {
+    /// Clave de la sesión (`<id>::<base>`): no cambia, así las pestañas abiertas siguen funcionando.
+    pub key: String,
+    pub info: ConnectInfo,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectFailure {
+    pub database: String,
+    pub error: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectResult {
+    pub reconnected: Vec<ReconnectedSession>,
+    pub failed: Vec<ReconnectFailure>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaInfo {
