@@ -28,6 +28,7 @@ import ParamsDialog from "./ParamsDialog";
 import PlanTree from "./PlanTree";
 import SqlEditor, { type SqlEditorHandle } from "./SqlEditor";
 import Icon from "./Icon";
+import { t } from "../i18n";
 
 interface Props {
   connId: string;
@@ -212,7 +213,7 @@ export default function SqlTab({
     setError(null);
     try {
       const result = await api.exportSql(connId, text, format, path);
-      setNotice(`Se exportaron ${result.rows.toLocaleString()} filas a ${path}`);
+      setNotice(t("Se exportaron {n} filas a {path}", { n: result.rows.toLocaleString(), path }));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -227,7 +228,7 @@ export default function SqlTab({
       );
       setError(null);
     } catch (e) {
-      setError(`No se pudo formatear: ${errorText(e)}`);
+      setError(t("No se pudo formatear: {error}", { error: errorText(e) }));
     }
   };
 
@@ -239,7 +240,7 @@ export default function SqlTab({
       editor.current?.setText(opened.content);
       setFile({ path: opened.path, name: opened.name });
       onTitle(opened.name);
-      setNotice(`Abierto ${opened.path}. Ctrl+Z recupera lo que había antes en el editor.`);
+      setNotice(t("Abierto {path}. Ctrl+Z recupera lo que había antes en el editor.", { path: opened.path }));
       editor.current?.focus();
     } catch (e) {
       setError(errorText(e));
@@ -251,13 +252,13 @@ export default function SqlTab({
     try {
       const saved = await api.saveTextFile(
         editor.current?.getAll() ?? "",
-        file?.name ?? "consulta.sql",
+        file?.name ?? t("consulta.sql"),
         asNew ? null : (file?.path ?? null),
       );
       if (!saved) return;
       setFile({ path: saved.path, name: saved.name });
       onTitle(saved.name);
-      setNotice(`Guardado en ${saved.path}`);
+      setNotice(t("Guardado en {path}", { path: saved.path }));
     } catch (e) {
       setError(errorText(e));
     }
@@ -289,67 +290,67 @@ export default function SqlTab({
       <div className="toolbar wrap">
         {running ? (
           <button className="danger" onClick={cancel}>
-            <Icon name="stop" size={12} /> Cancelar
+            <Icon name="stop" size={12} /> {t("Cancelar")}
           </button>
         ) : (
           <>
             <button
               className="primary"
               onClick={() => void run(false)}
-              title="Ejecuta la selección o, si no hay, la sentencia donde está el cursor (Ctrl+Enter)"
+              title={t("Ejecuta la selección o, si no hay, la sentencia donde está el cursor (Ctrl+Enter)")}
             >
-              <Icon name="play" size={12} /> Ejecutar
+              <Icon name="play" size={12} /> {t("Ejecutar")}
             </button>
-            <button onClick={() => void run(true)} title="Ejecuta la selección o todo el script (Ctrl+Mayús+Enter)">
-              Ejecutar todo
+            <button onClick={() => void run(true)} title={t("Ejecuta la selección o todo el script (Ctrl+Mayús+Enter)")}>
+              {t("Ejecutar todo")}
             </button>
           </>
         )}
-        <button onClick={() => void explain(false)} disabled={running} title="EXPLAIN: muestra el plan sin ejecutar la consulta">
-          Explicar
+        <button onClick={() => void explain(false)} disabled={running} title={t("EXPLAIN: muestra el plan sin ejecutar la consulta")}>
+          {t("Explicar")}
         </button>
         <button
           onClick={() => void explain(true)}
           disabled={running || !readOnly}
           title={
             readOnly
-              ? "EXPLAIN ANALYZE: ejecuta la consulta y muestra tiempos reales"
-              : "ANALYZE ejecuta la consulta de verdad: solo disponible en modo solo lectura"
+              ? t("EXPLAIN ANALYZE: ejecuta la consulta y muestra tiempos reales")
+              : t("ANALYZE ejecuta la consulta de verdad: solo disponible en modo solo lectura")
           }
         >
-          Analizar
+          {t("Analizar")}
         </button>
-        <button onClick={formatCode} title="Formatear SQL (Mayús+Alt+F). Si hay selección, solo formatea la selección.">
-          Formatear
+        <button onClick={formatCode} title={t("Formatear SQL (Mayús+Alt+F). Si hay selección, solo formatea la selección.")}>
+          {t("Formatear")}
         </button>
-        <button onClick={() => void openFile()} title="Abrir un script .sql">
-          <Icon name="folder" size={12} /> Abrir…
+        <button onClick={() => void openFile()} title={t("Abrir un script .sql")}>
+          <Icon name="folder" size={12} /> {t("Abrir…")}
         </button>
         <button
           onClick={() => void saveFile(false)}
-          title={file ? `Guardar en ${file.path} (Ctrl+S)` : "Guardar el script en un archivo .sql (Ctrl+S)"}
+          title={file ? t("Guardar en {path} (Ctrl+S)", { path: file.path }) : t("Guardar el script en un archivo .sql (Ctrl+S)")}
         >
-          <Icon name="save" size={12} /> Guardar
+          <Icon name="save" size={12} /> {t("Guardar")}
         </button>
         {file && (
-          <button onClick={() => void saveFile(true)} title="Guardar una copia con otro nombre">
-            Guardar como…
+          <button onClick={() => void saveFile(true)} title={t("Guardar una copia con otro nombre")}>
+            {t("Guardar como…")}
           </button>
         )}
         <button
           className={historyOpen ? "toggled" : ""}
           onClick={() => setHistoryOpen((o) => !o)}
-          title="Consultas ejecutadas anteriormente en este servidor"
+          title={t("Consultas ejecutadas anteriormente en este servidor")}
         >
           Historial{history.length > 0 ? ` (${history.length})` : ""}
         </button>
         <ExportMenu onExport={exportResult} disabled={running || exporting} />
-        <label className="inline-select" title="Tiempo máximo por consulta">
-          Límite
+        <label className="inline-select" title={t("Tiempo máximo por consulta")}>
+          {t("Límite")}
           <select value={timeoutMs} onChange={(e) => setTimeoutMs(Number(e.target.value))} disabled={running}>
-            {(production ? TIMEOUTS.filter((t) => t.ms !== 0) : TIMEOUTS).map((t) => (
-              <option key={t.ms} value={t.ms}>
-                {t.label}
+            {(production ? TIMEOUTS.filter((o) => o.ms !== 0) : TIMEOUTS).map((o) => (
+              <option key={o.ms} value={o.ms}>
+                {t(o.label)}
               </option>
             ))}
           </select>
@@ -358,9 +359,9 @@ export default function SqlTab({
           <button
             onClick={() => void dryRun()}
             disabled={running}
-            title="Ejecuta la consulta dentro de una transacción y la revierte (ROLLBACK): ves el efecto sin guardar nada"
+            title={t("Ejecuta la consulta dentro de una transacción y la revierte (ROLLBACK): ves el efecto sin guardar nada")}
           >
-            Probar (ROLLBACK)
+            {t("Probar (ROLLBACK)")}
           </button>
         )}
         <ModeChip
@@ -388,7 +389,7 @@ export default function SqlTab({
       {danger && (
         <div className="modal-backdrop" onMouseDown={() => setDanger(null)}>
           <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
-            <h2>Sentencia peligrosa</h2>
+            <h2>{t("Sentencia peligrosa")}</h2>
             <p>
               La escritura está habilitada en <strong>{connName}</strong>. Esta ejecución incluye:
             </p>
@@ -401,10 +402,10 @@ export default function SqlTab({
               ))}
             </ul>
             <p className="muted">
-              Puedes probarla primero con ROLLBACK para ver cuántas filas afectaría sin guardar nada.
+              {t("Puedes probarla primero con ROLLBACK para ver cuántas filas afectaría sin guardar nada.")}
             </p>
             <div className="modal-actions">
-              <button onClick={() => setDanger(null)}>Cancelar</button>
+              <button onClick={() => setDanger(null)}>{t("Cancelar")}</button>
               <span className="spacer" />
               <button
                 onClick={() => {
@@ -413,7 +414,7 @@ export default function SqlTab({
                   void execute(text, false, true);
                 }}
               >
-                Probar con ROLLBACK
+                {t("Probar con ROLLBACK")}
               </button>
               <button
                 className="danger"
@@ -423,7 +424,7 @@ export default function SqlTab({
                   void execute(text, true);
                 }}
               >
-                Ejecutar de todos modos
+                {t("Ejecutar de todos modos")}
               </button>
             </div>
           </div>
@@ -433,10 +434,10 @@ export default function SqlTab({
       {historyOpen && (
         <div className="history-panel">
           <div className="history-head">
-            <strong>Historial</strong>
-            <span className="muted">Clic para cargar la consulta en el editor</span>
+            <strong>{t("Historial")}</strong>
+            <span className="muted">{t("Clic para cargar la consulta en el editor")}</span>
             <span className="spacer" />
-            <label className="inline-check" title="Las consultas pueden contener datos sensibles; se guardan en este equipo sin cifrar">
+            <label className="inline-check" title={t("Las consultas pueden contener datos sensibles; se guardan en este equipo sin cifrar")}>
               <input
                 type="checkbox"
                 checked={historyOn}
@@ -445,7 +446,7 @@ export default function SqlTab({
                   setHistoryEnabled(e.target.checked);
                 }}
               />
-              Guardar historial
+              {t("Guardar historial")}
             </label>
             <button
               className="small"
@@ -455,13 +456,13 @@ export default function SqlTab({
                 setHistory([]);
               }}
             >
-              <Icon name="trash" size={12} /> Vaciar
+              <Icon name="trash" size={12} /> {t("Vaciar")}
             </button>
-            <button className="ghost icon-btn" onClick={() => setHistoryOpen(false)} title="Cerrar">
+            <button className="ghost icon-btn" onClick={() => setHistoryOpen(false)} title={t("Cerrar")}>
               <Icon name="close" size={13} />
             </button>
           </div>
-          {history.length === 0 && <div className="history-empty">Todavía no hay consultas ejecutadas.</div>}
+          {history.length === 0 && <div className="history-empty">{t("Todavía no hay consultas ejecutadas.")}</div>}
           <div className="history-list">
             {history.map((h) => (
               <button key={h.sql} className="history-item" onClick={() => pick(h)} title={h.sql}>
@@ -489,7 +490,7 @@ export default function SqlTab({
         <div className="alert alert-ok">
           <Icon name="download" size={15} />
           <span>{notice}</span>
-          <button className="ghost icon-btn" onClick={() => setNotice(null)} title="Cerrar">
+          <button className="ghost icon-btn" onClick={() => setNotice(null)} title={t("Cerrar")}>
             <Icon name="close" size={12} />
           </button>
         </div>
@@ -505,7 +506,7 @@ export default function SqlTab({
       {output && dry && (
         <div className="alert alert-ok">
           <Icon name="lock" size={15} />
-          <span>Ensayo: se ejecutó dentro de una transacción y se revirtió (ROLLBACK). No se guardó ningún cambio.</span>
+          <span>{t("Ensayo: se ejecutó dentro de una transacción y se revirtió (ROLLBACK). No se guardó ningún cambio.")}</span>
         </div>
       )}
 
@@ -535,31 +536,31 @@ export default function SqlTab({
         {running && <span className="status-running">Ejecutando… {(elapsed / 1000).toFixed(1)} s</span>}
         {exporting && (
           <span className="status-running">
-            Exportando…{" "}
+            {t("Exportando…")}{" "}
             <button className="danger small" onClick={cancel}>
-              Cancelar
+              {t("Cancelar")}
             </button>
           </span>
         )}
         {!running && current && current.columns.length > 0 && !isPlan && (
           <span className="muted">
             {current.totalRows.toLocaleString()}
-            {current.totalIsLowerBound ? "+" : ""} filas
-            {current.truncated ? ` · mostrando las primeras ${ROW_LIMIT.toLocaleString()}` : ""}
+            {current.totalIsLowerBound ? "+" : ""} {t("filas")}
+            {current.truncated ? t(" · mostrando las primeras {n}", { n: ROW_LIMIT.toLocaleString() }) : ""}
           </span>
         )}
-        {!running && isPlan && <span className="muted">Plan de ejecución</span>}
+        {!running && isPlan && <span className="muted">{t("Plan de ejecución")}</span>}
         {!running && !output && !error && (
-          <span className="muted">Ctrl+Enter ejecuta la sentencia del cursor · Ctrl+Mayús+Enter ejecuta todo</span>
+          <span className="muted">{t("Ctrl+Enter ejecuta la sentencia del cursor · Ctrl+Mayús+Enter ejecuta todo")}</span>
         )}
         <span className="spacer" />
         {pinnable && current && (
           <button
             className="small"
-            title="Fijar este resultado para compararlo con otro después"
+            title={t("Fijar este resultado para compararlo con otro después")}
             onClick={() => onPin(`${file?.name ?? "SQL"} · ${new Date().toLocaleTimeString()}`, current)}
           >
-            <Icon name="pin" size={12} /> Fijar resultado
+            <Icon name="pin" size={12} /> {t("Fijar resultado")}
           </button>
         )}
         {!running && output && <span className="muted">{output.elapsedMs} ms</span>}
