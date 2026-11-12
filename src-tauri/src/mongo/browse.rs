@@ -128,6 +128,42 @@ pub async fn find(client: &Client, database: &str, collection: &str, p: FindPara
     Ok(FindPage { documents, truncated, elapsed_ms: started.elapsed().as_millis() as u64 })
 }
 
+/// Ejecuta un pipeline de agregación (ya validado) y devuelve hasta `limit` documentos.
+pub async fn aggregate(
+    client: &Client,
+    database: &str,
+    collection: &str,
+    pipeline: Vec<Document>,
+    limit: i64,
+    timeout: Duration,
+) -> Result<FindPage, String> {
+    query::validate_database(database)?;
+    query::validate_collection(collection)?;
+    let started = Instant::now();
+    let max = query::clamp_limit(limit) as usize;
+
+    let coll = client.database(database).collection::<Document>(collection);
+    let mut cursor = coll.aggregate(pipeline).max_time(timeout).await.map_err(err)?;
+
+    let mut documents = Vec::new();
+    let mut bytes = 0usize;
+    let mut truncated = false;
+    while let Some(doc) = cursor.try_next().await.map_err(err)? {
+        if documents.len() >= max {
+            truncated = true;
+            break;
+        }
+        let text = query::to_canonical(doc);
+        bytes += text.len();
+        if bytes > query::MAX_PAGE_BYTES && !documents.is_empty() {
+            truncated = true;
+            break;
+        }
+        documents.push(text);
+    }
+    Ok(FindPage { documents, truncated, elapsed_ms: started.elapsed().as_millis() as u64 })
+}
+
 /// Conteo exacto con el filtro (puede tardar en colecciones grandes: lleva tiempo máximo).
 pub async fn count(
     client: &Client,

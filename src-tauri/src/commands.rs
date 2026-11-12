@@ -318,6 +318,22 @@ pub async fn mongo_find(
 }
 
 #[tauri::command]
+pub async fn mongo_aggregate(
+    state: State<'_, Sessions>,
+    id: String,
+    database: String,
+    collection: String,
+    pipeline: String,
+    limit: i64,
+    timeout_ms: u64,
+) -> Result<mongo::browse::FindPage, String> {
+    let s = mongo_session(&state, &id).await?;
+    let stages = mongo::query::parse_pipeline(&pipeline)?;
+    let timeout = mongo::query::effective_timeout(timeout_ms, s.production);
+    mongo::browse::aggregate(&s.client, &database, &collection, stages, limit, timeout).await
+}
+
+#[tauri::command]
 pub async fn mongo_count(
     state: State<'_, Sessions>,
     id: String,

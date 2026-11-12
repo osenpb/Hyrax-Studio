@@ -197,6 +197,17 @@ const RULES: [string, string][] = [
   ],
   ["{} no es JSON válido: {}", "{1} is not valid JSON: {2}"],
   ["{} tiene un tipo no válido: {}", "{1} has an invalid type: {2}"],
+  ["El pipeline está vacío. Escribe un arreglo con al menos una etapa.", "The pipeline is empty. Write an array with at least one stage."],
+  ["El pipeline debe ser un arreglo de etapas entre corchetes.", "The pipeline must be an array of stages in square brackets."],
+  ["El pipeline no tiene etapas.", "The pipeline has no stages."],
+  ["El pipeline tiene más de {} etapas.", "The pipeline has more than {1} stages."],
+  ["El pipeline es demasiado largo.", "The pipeline is too long."],
+  ["El pipeline no es JSON válido: {}", "The pipeline is not valid JSON: {1}"],
+  ["El pipeline usa {}, que Hyrax no permite: ejecuta JavaScript en el servidor o escribe datos.", "The pipeline uses {1}, which Hyrax does not allow: it runs JavaScript on the server or writes data."],
+  ["La etapa {} debe ser un objeto con un solo operador que empiece por $, como $match.", "Stage {1} must be an object with a single operator starting with $, such as $match."],
+  ["La etapa {} ({}) no está disponible en la consola.", "Stage {1} ({2}) is not available in the console."],
+  ["La etapa {} tiene un tipo no válido: {}", "Stage {1} has an invalid type: {2}"],
+  ["La etapa {} debe ser un objeto.", "Stage {1} must be an object."],
   // --- genéricas: van al final para no tapar a las específicas ---
   ["No se pudo borrar {}: {}", "Could not delete {1}: {2}"],
 ];

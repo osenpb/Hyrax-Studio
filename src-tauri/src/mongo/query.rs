@@ -60,6 +60,56 @@ pub fn parse_document(text: &str, what: &str) -> Result<Document, String> {
     }
 }
 
+/// Máximo de etapas de un pipeline (evita pipelines absurdos pegados por error).
+pub const MAX_STAGES: usize = 50;
+
+/// Convierte el texto (un arreglo JSON extendido de etapas) en un pipeline. Cada etapa debe ser un objeto con
+/// una sola clave que empiece por `$`; se rechazan las etapas y operadores que escriben o ejecutan JavaScript.
+pub fn parse_pipeline(text: &str) -> Result<Vec<Document>, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("El pipeline está vacío. Escribe un arreglo con al menos una etapa.".to_string());
+    }
+    if text.len() > MAX_TEXT {
+        return Err("El pipeline es demasiado largo.".to_string());
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("El pipeline no es JSON válido: {e}"))?;
+    let stages = value
+        .as_array()
+        .ok_or_else(|| "El pipeline debe ser un arreglo de etapas entre corchetes.".to_string())?;
+    if stages.is_empty() {
+        return Err("El pipeline no tiene etapas.".to_string());
+    }
+    if stages.len() > MAX_STAGES {
+        return Err(format!("El pipeline tiene más de {MAX_STAGES} etapas."));
+    }
+    let mut found = None;
+    scan(&value, &mut found);
+    if let Some(op) = found {
+        return Err(format!(
+            "El pipeline usa {op}, que Hyrax no permite: ejecuta JavaScript en el servidor o escribe datos."
+        ));
+    }
+    let mut out = Vec::with_capacity(stages.len());
+    for (i, stage) in stages.iter().enumerate() {
+        let n = i + 1;
+        let obj = stage
+            .as_object()
+            .filter(|o| o.len() == 1 && o.keys().all(|k| k.starts_with('$')))
+            .ok_or_else(|| format!("La etapa {n} debe ser un objeto con un solo operador que empiece por $, como $match."))?;
+        let name = obj.keys().next().cloned().unwrap_or_default();
+        if name == "$collStats" || name == "$currentOp" || name == "$listSessions" || name == "$planCacheStats" {
+            return Err(format!("La etapa {n} ({name}) no está disponible en la consola."));
+        }
+        match Bson::try_from(stage.clone()).map_err(|e| format!("La etapa {n} tiene un tipo no válido: {e}"))? {
+            Bson::Document(d) => out.push(d),
+            _ => return Err(format!("La etapa {n} debe ser un objeto.")),
+        }
+    }
+    Ok(out)
+}
+
 /// El orden solo admite `1` o `-1` por campo.
 pub fn validate_sort(sort: &Document) -> Result<(), String> {
     for (field, direction) in sort {
@@ -160,6 +210,32 @@ mod tests {
         assert!(parse_document("5", "El filtro").unwrap_err().contains("objeto"));
         let huge = format!("{{\"a\":\"{}\"}}", "x".repeat(300_000));
         assert!(parse_document(&huge, "El filtro").unwrap_err().contains("demasiado largo"));
+    }
+
+    #[test]
+    fn pipelines_are_parsed_stage_by_stage_and_unsafe_ones_rejected() {
+        let p = parse_pipeline(r#"[{"$match":{"a":1}},{"$group":{"_id":"$b","n":{"$sum":1}}}]"#).unwrap();
+        assert_eq!(p.len(), 2);
+        assert_eq!(p[0].keys().next().unwrap(), "$match");
+        assert!(parse_pipeline("").unwrap_err().contains("vacío"));
+        assert!(parse_pipeline("[]").unwrap_err().contains("no tiene etapas"));
+        assert!(parse_pipeline(r#"{"$match":{}}"#).unwrap_err().contains("arreglo"));
+        assert!(parse_pipeline("[").unwrap_err().contains("JSON válido"));
+        assert!(parse_pipeline(r#"[{"match":{}}]"#).unwrap_err().contains("etapa 1"));
+        assert!(parse_pipeline(r#"[{"$match":{},"$limit":1}]"#).unwrap_err().contains("etapa 1"));
+        assert!(parse_pipeline(r#"[1]"#).unwrap_err().contains("etapa 1"));
+        for bad in [
+            r#"[{"$out":"x"}]"#,
+            r#"[{"$match":{}},{"$merge":{"into":"x"}}]"#,
+            r#"[{"$match":{"$expr":{"$function":{"body":"x","args":[],"lang":"js"}}}}]"#,
+            r#"[{"$group":{"_id":1,"v":{"$accumulator":{}}}}]"#,
+            r#"[{"$lookup":{"from":"b","pipeline":[{"$out":"z"}],"as":"r"}}]"#,
+        ] {
+            assert!(parse_pipeline(bad).unwrap_err().contains("no permite"), "{bad}");
+        }
+        assert!(parse_pipeline(r#"[{"$collStats":{}}]"#).unwrap_err().contains("no está disponible"));
+        let many = format!("[{}]", vec![r#"{"$match":{}}"#; MAX_STAGES + 1].join(","));
+        assert!(parse_pipeline(&many).unwrap_err().contains("más de"));
     }
 
     #[test]
