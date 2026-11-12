@@ -19,6 +19,30 @@ interface Props {
 
 type Doc = Record<string, unknown>;
 
+type View = "table" | "docs" | "json";
+type ViewerMode = "tree" | "doc" | "json";
+
+const VIEW_KEY = "hyrax-mongo-view";
+const VIEWER_KEY = "hyrax-mongo-viewer";
+
+/** Preferencia guardada en este equipo (una comodidad: si no se puede leer, se usa el valor por omisión). */
+function pref<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return allowed.includes(v as T) ? (v as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function savePref(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // sin almacenamiento: la elección vale solo para esta pestaña
+  }
+}
+
 const PAGE_SIZES = [25, 50, 100];
 
 const HELP =
@@ -54,8 +78,19 @@ export default function MongoCollectionTab({ profileId, database, collection, pr
   const [viewing, setViewing] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   // Vista de la colección (tabla o lista de documentos en JSON) y del visor de un documento (árbol o JSON).
-  const [view, setView] = useState<"table" | "docs" | "json">("table");
-  const [viewerMode, setViewerMode] = useState<"tree" | "doc" | "json">("tree");
+  // Por omisión, el estilo de mongosh; se recuerda lo que el usuario elija.
+  const [view, setViewState] = useState<View>(() => pref<View>(VIEW_KEY, ["table", "docs", "json"], "docs"));
+  const [viewerMode, setViewerModeState] = useState<ViewerMode>(() =>
+    pref<ViewerMode>(VIEWER_KEY, ["tree", "doc", "json"], "doc"),
+  );
+  const setView = (v: View) => {
+    setViewState(v);
+    savePref(VIEW_KEY, v);
+  };
+  const setViewerMode = (m: ViewerMode) => {
+    setViewerModeState(m);
+    savePref(VIEWER_KEY, m);
+  };
 
   const skip = pageIndex * pageSize;
 

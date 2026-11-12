@@ -299,6 +299,9 @@ beforeEach(() => {
   importError = null;
   dropError = null;
   localStorage.clear();
+  // Las pruebas de MongoDB parten de la tabla y del árbol, salvo las que prueban el valor por omisión.
+  localStorage.setItem("hyrax-mongo-view", "table");
+  localStorage.setItem("hyrax-mongo-viewer", "tree");
 });
 afterEach(cleanup);
 
@@ -2159,5 +2162,64 @@ describe("vista de documentos al estilo mongosh", () => {
 
     await user.click(within(viewer).getByRole("button", { name: "JSON" }));
     expect(viewer.textContent).toContain('"$oid": "507f1f77bcf86cd799439011"');
+  });
+});
+
+describe("MongoDB: formato por omisión y preferencia", () => {
+  const open = async (user: ReturnType<typeof userEvent.setup>) => {
+    withMongoProfile = true;
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: /Conectar con atlas_demo/ }));
+    await user.click(await inSidebar().findByText("ventas"));
+    await user.dblClick(await inSidebar().findByText("orders"));
+  };
+
+  it("sin preferencia guardada abre la lista de documentos al estilo mongosh y el visor en modo Documento", async () => {
+    localStorage.removeItem("hyrax-mongo-view");
+    localStorage.removeItem("hyrax-mongo-viewer");
+    const user = userEvent.setup();
+    await open(user);
+
+    const list = await screen.findByLabelText("Lista de documentos");
+    expect(list.textContent).toContain("_id: ObjectId('507f1f77bcf86cd799439011')");
+    expect(within(screen.getByRole("group", { name: "Vista" })).getByRole("button", { name: "Documentos" }).className).toContain("active");
+
+    // El visor se abre desde la tabla (que tiene selección de filas) y arranca en «Documento».
+    await user.click(within(screen.getByRole("group", { name: "Vista" })).getByRole("button", { name: "Tabla" }));
+    const row = (await screen.findByText("Ana")).closest("tr") as HTMLElement;
+    await user.click(within(row).getAllByRole("cell")[0]);
+    await user.click(await screen.findByRole("button", { name: "Ver documento" }));
+    const viewer = await screen.findByRole("complementary", { name: "Documento" });
+    expect(within(viewer).getByRole("button", { name: "Documento" }).className).toContain("active");
+    expect(viewer.textContent).toContain("ObjectId('507f1f77bcf86cd799439011')");
+  });
+
+  it("recuerda la vista elegida al abrir otra colección", async () => {
+    localStorage.removeItem("hyrax-mongo-view");
+    const user = userEvent.setup();
+    await open(user);
+    await screen.findByLabelText("Lista de documentos");
+    await user.click(within(screen.getByRole("group", { name: "Vista" })).getByRole("button", { name: "JSON" }));
+    expect(localStorage.getItem("hyrax-mongo-view")).toBe("json");
+
+    cleanup();
+    await open(userEvent.setup());
+    const list = await screen.findByLabelText("Documentos en JSON");
+    expect(list.textContent).toContain('"$oid"');
+  });
+
+  it("si el almacenamiento falla usa el valor por omisión sin romperse", async () => {
+    const original = Storage.prototype.getItem;
+    Storage.prototype.getItem = function (key: string) {
+      if (key.startsWith("hyrax-mongo-")) throw new Error("sin acceso");
+      return original.call(this, key);
+    };
+    try {
+      const user = userEvent.setup();
+      await open(user);
+      expect(await screen.findByLabelText("Lista de documentos")).toBeTruthy();
+    } finally {
+      Storage.prototype.getItem = original;
+    }
   });
 });
