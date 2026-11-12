@@ -1,4 +1,5 @@
 mod commands;
+mod creating;
 mod db;
 mod dropping;
 mod edit;
@@ -53,6 +54,7 @@ pub fn run() {
             commands::import_rows,
             commands::drop_object,
             commands::drop_database,
+            commands::create_database,
             commands::open_text_file,
             commands::save_text_file,
             commands::mongo_connect,

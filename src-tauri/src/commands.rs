@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
 
+use crate::creating;
 use crate::db::Session;
 use crate::models::*;
 use crate::mongo;
@@ -711,6 +712,33 @@ pub async fn drop_database(
     let own = state.0.lock().await.remove(&format!("{id}::{database}"));
     drop(own);
     dropping::drop_database(&profile, &database, force, &confirm).await
+}
+
+/// Crea una base de datos. Como eliminarla, exige haber habilitado antes la escritura en este servidor.
+#[tauri::command]
+pub async fn create_database(
+    app: AppHandle,
+    state: State<'_, Sessions>,
+    id: String,
+    name: String,
+) -> Result<String, String> {
+    creating::create_database_sql(&name)?;
+    let prefix = format!("{id}::");
+    let write_enabled = {
+        let sessions = state.0.lock().await;
+        sessions
+            .iter()
+            .any(|(key, s)| key.starts_with(&prefix) && !s.read_only.load(std::sync::atomic::Ordering::SeqCst))
+    };
+    if !write_enabled {
+        return Err(
+            "Para crear una base de datos hay que habilitar antes la escritura en este servidor (botón de modo de cualquiera de sus bases)."
+                .to_string(),
+        );
+    }
+    let mut profile = profiles::find(&config_dir(&app)?, &id)?;
+    load_secrets(&mut profile)?;
+    creating::create_database(&profile, &name).await
 }
 
 #[tauri::command]
